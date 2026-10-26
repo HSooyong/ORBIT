@@ -1,26 +1,26 @@
 preset             prog    dRMS dB    dLUFS
-Default (Mix 35%)  pink      +1.08    +0.04
-Default (Mix 35%)  drums     -0.51    +0.03
-Default (Mix 35%)  pad       +0.17    +0.16
-Low Orbit          pink      +1.08    +0.04
-Low Orbit          drums     -0.50    +0.02
-Low Orbit          pad       +0.19    +0.16
-Vocal Halo         pink      +1.28    +0.03
-Vocal Halo         drums     -0.55    +0.08
-Vocal Halo         pad       +0.10    +0.08
-Worn Cassette      pink      +0.56    +0.02
-Worn Cassette      drums     -0.04    -0.12
-Worn Cassette      pad       +0.12    +0.10
-Periapsis          pink      +1.24    +0.06
-Periapsis          drums     -0.59    -0.01
-Periapsis          pad       +0.31    +0.30
-Event Horizon      pink      +1.33    +0.14
-Event Horizon      drums     -0.38    +0.10
-Event Horizon      pad       +0.37    +0.35
-Stepping Stones    pink      +1.30    +0.08
-Stepping Stones    drums     -0.50    +0.03
-Stepping Stones    pad       +0.17    +0.14
-Tidal Pad          pink      +2.68    +0.11
-Tidal Pad          drums     +0.69    +0.40
-Tidal Pad          pad       +0.05    +0.06
-[PASS] level match: worst |dLUFS| = 0.40 LU (limit 0.5), 0 cases over
+Default (Mix 35%)  pink      +0.13    +0.04
+Default (Mix 35%)  drums     +0.28    -0.02
+Default (Mix 35%)  pad       +0.19    +0.16
+Low Orbit          pink      +0.13    +0.04
+Low Orbit          drums     +0.28    -0.02
+Low Orbit          pad       +0.21    +0.17
+Vocal Halo         pink      +0.15    +0.03
+Vocal Halo         drums     +0.23    +0.03
+Vocal Halo         pad       +0.14    +0.10
+Worn Cassette      pink      +0.30    +0.03
+Worn Cassette      drums     +0.63    -0.08
+Worn Cassette      pad       +0.18    +0.13
+Periapsis          pink      +0.17    +0.05
+Periapsis          drums     +0.27    +0.01
+Periapsis          pad       +0.35    +0.32
+Event Horizon      pink      +0.28    +0.13
+Event Horizon      drums     +0.11    +0.12
+Event Horizon      pad       +0.41    +0.36
+Stepping Stones    pink      +0.20    +0.07
+Stepping Stones    drums     +0.18    +0.06
+Stepping Stones    pad       +0.24    +0.18
+Tidal Pad          pink      +0.42    +0.08
+Tidal Pad          drums     +0.56    +0.18
+Tidal Pad          pad       +0.14    +0.11
+[PASS] level match: worst |dLUFS| = 0.36 LU (limit 0.5), worst pink dRMS +0.42 dB (limit +0.5), 0 cases over

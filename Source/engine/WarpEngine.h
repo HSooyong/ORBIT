@@ -82,9 +82,10 @@ public:
         int sz = 1; while (sz < need) sz <<= 1;
         for (auto& b : buf) b.assign ((size_t) sz, 0.0f);
         mask = sz - 1;
+        for (int c = 0; c < 2; ++c) { splitDry[c].design (sr, kSplitHz); splitWet[c].design (sr, kSplitHz); }
         kwIn.design (sr); kwInR.design (sr); kwOut.design (sr); kwOutR.design (sr);
         lmA = (float) (1.0 - std::exp (-1.0 / (0.4 * sr)));  // 400 ms power detector
-        lmB = (float) (1.0 - std::exp (-1.0 / (1.5 * sr)));  // 1.5 s gain glide (no pumping)
+        lmB = (float) (1.0 - std::exp (-1.0 / (1.0 * sr)));  // 1.0 s gain glide (no pumping)
         reset();
     }
 
@@ -101,6 +102,7 @@ public:
         flRng = XorShift32 (0xC0FFEEu); flNoise = 0;
         for (int c = 0; c < 2; ++c) { fbHp[c] = fbLp[c] = toneLp[c] = shelfLp[c] = tapeLp[c] = OnePole(); fbSig[c] = 0; dcX[c] = dcY[c] = 0; }
         keplerEcc = -1.0f;
+        for (int c = 0; c < 2; ++c) { splitDry[c].clear(); splitWet[c].clear(); }
         kwIn.clear(); kwInR.clear(); kwOut.clear(); kwOutR.clear(); pIn = pOut = 0; lmG = 1;
     }
 
@@ -196,8 +198,11 @@ public:
             outS += perSample20 * (outT - outS);
             const float dg = std::cos (mixS * 1.5707964f);
             const float wg = std::sin (mixS * 1.5707964f) * bloomGain;
-            float ol = xl * dg + wet[0] * wg;
-            float orr = xr * dg + wet[1] * wg;
+            // ---- LowSplit: below kSplitHz the dry passes at unity and the wet is removed (complementary split, sums flat)
+            const float xlo[2] = { splitDry[0].lp (xl), splitDry[1].lp (xr) };
+            const float whi[2] = { wet[0] - splitWet[0].lp (wet[0]), wet[1] - splitWet[1].lp (wet[1]) };
+            float ol = xlo[0] + (xl - xlo[0]) * dg + whi[0] * wg;
+            float orr = xlo[1] + (xr - xlo[1]) * dg + whi[1] * wg;
             // ---- LevelMatch: keep the mixed bus at the dry input's K-weighted loudness (see design doc 11.x).
             {
                 const float il = kwIn.process (xl), ir = kwInR.process (xr), kl = kwOut.process (ol), kr = kwOutR.process (orr);
@@ -392,6 +397,14 @@ private:
     float bhx = 0, bhy = 0;
     Sm gravS, warpS, flutS, chaosS, floorS, horS, radS, eccS, widthS, fbSm, toneSm, driveSm, bloomS;
     float mixS = 0, outS = 1;
+    struct Svf2 // TPT state-variable 2nd-order Butterworth low-pass
+    {
+        float g = 0, k = 1.4142135f, a1 = 0, s1 = 0, s2 = 0;
+        void design (double fs, double fc) { g = (float) std::tan (3.14159265358979 * fc / fs); a1 = 1.0f / (1.0f + g * (g + k)); s1 = s2 = 0; }
+        void clear() { s1 = s2 = 0; }
+        float lp (float x) { const float v1 = a1 * (s1 + g * (x - s2)), v2 = s2 + g * v1; s1 = 2 * v1 - s1; s2 = 2 * v2 - s2; return v2; }
+    } splitDry[2], splitWet[2];
+    static constexpr double kSplitHz = 180.0; // wet low-cut / dry-only lows (see design doc row 22)
     struct KW // BS.1770 K-weighting (shelf + RLB), float, mono detector
     {
         float b[2][5] {}, z[2][2] {};

@@ -262,8 +262,8 @@ int main (int argc, char** argv)
 
     // level match: default + 7 presets x {pink, drums, pad}, integrated LUFS within +/-0.5 LU of dry
     {
-        double worst = 0; const int over = levelmatch::run (false, worst);
-        char b[160]; std::snprintf (b, sizeof b, "level match vs dry: worst |dLUFS| %.2f LU over 24 cases (limit 0.5), %d over", worst, over);
+        double worst = 0, pr = 0; const int over = levelmatch::run (false, worst, pr);
+        char b[160]; std::snprintf (b, sizeof b, "level match vs dry: worst |dLUFS| %.2f LU over 24 cases (limit 0.5), worst pink dRMS %+.2f dB (limit +0.5), %d over", worst, pr, over);
         check (over == 0, b);
     }
 

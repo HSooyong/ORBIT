@@ -25,15 +25,15 @@ static std::vector<float> pad (int n, int sr)
         for (int k = 0; k < 5; ++k) { ph[k] = wrap01 (ph[k] + f[k] * vib / sr); for (int h = 1; h <= 12; ++h) v += std::sin (kTwoPi * h * ph[k]) / h * (1.0 / (1 + std::pow ((h * f[k] - 700) / 400, 2))); } // formant ~700 Hz
         y[(size_t) i] = (float) (0.06 * v * (0.8 + 0.2 * std::sin (kTwoPi * 0.25 * t))); } return y; }
 
-// returns number of cases outside +/-0.5 LU; worst |dLUFS| in worst
-inline int run (bool print, double& worst)
+// returns number of failing cases: |dLUFS| > 0.5 LU, or pink-noise plain RMS > +0.5 dB over dry
+inline int run (bool print, double& worst, double& worstPinkRms)
 {
     const int sr = 48000, n = sr * 12;
     struct M { const char* name; std::vector<float> x; } mats[] = { { "pink", pink (n, 9) }, { "drums", drums (n, sr) }, { "pad", pad (n, sr) } };
     std::vector<Preset> list; Preset def { "Default (Mix 35%)", Params {} }; list.push_back (def);
     for (auto& p : factoryPresets()) list.push_back (p);
     if (print) std::printf ("%-18s %-6s %8s %8s\n", "preset", "prog", "dRMS dB", "dLUFS");
-    worst = 0; int fails = 0;
+    worst = 0; worstPinkRms = -99; int fails = 0, rmsFails = 0;
     for (auto& pr : list)
         for (auto& m : mats)
         {
@@ -41,10 +41,10 @@ inline int run (bool print, double& worst)
             for (int s = 0; s < n; s += 512) e.process (m.x.data() + s, m.x.data() + s, L.data() + s, R.data() + s, std::min (512, n - s), pr.p, h);
             const double dR = lufs::rmsDb (L, R) - lufs::rmsDb (m.x, m.x);
             const double dL = lufs::integrated (L, R, sr) - lufs::integrated (m.x, m.x, sr);
-            if (print) std::printf ("%-18s %-6s %+8.2f %+8.2f%s\n", pr.name, m.name, dR, dL, std::abs (dL) > 0.5 ? "  <-- >0.5 LU" : "");
-            worst = std::max (worst, std::abs (dL)); fails += std::abs (dL) > 0.5;
+            if (print) std::printf ("%-18s %-6s %+8.2f %+8.2f%s%s\n", pr.name, m.name, dR, dL, std::abs (dL) > 0.5 ? "  <-- >0.5 LU" : "", (std::string (m.name) == "pink" && dR > 0.5) ? "  <-- pink RMS >+0.5 dB" : "");
+            worst = std::max (worst, std::abs (dL)); fails += std::abs (dL) > 0.5; if (std::string (m.name) == "pink") { worstPinkRms = std::max (worstPinkRms, dR); rmsFails += dR > 0.5; }
         }
-    if (print) std::printf ("%s level match: worst |dLUFS| = %.2f LU (limit 0.5), %d cases over\n", fails ? "[FAIL]" : "[PASS]", worst, fails);
-    return fails;
+    if (print) std::printf ("%s level match: worst |dLUFS| = %.2f LU (limit 0.5), worst pink dRMS %+.2f dB (limit +0.5), %d cases over\n", fails + rmsFails ? "[FAIL]" : "[PASS]", worst, worstPinkRms, fails + rmsFails);
+    return fails + rmsFails;
 }
 }
