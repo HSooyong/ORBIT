@@ -1,0 +1,8 @@
+preset            bloom   envOld   envNew   dRMS dB    null dB
+Low Orbit            0%     0.00     0.00      0.00     -999.0
+Vocal Halo           0%     0.00     0.00      0.00     -999.0
+Worn Cassette        0%     0.00     0.00      0.00     -999.0
+Periapsis            0%     0.00     0.00      0.00     -999.0
+Event Horizon       60%     0.60     0.60     -0.05      -32.8
+Stepping Stones      0%     0.00     0.00      0.00     -999.0
+Tidal Pad           20%     0.07     0.20     -0.02      -40.7

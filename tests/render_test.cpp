@@ -195,8 +195,8 @@ int main (int argc, char** argv)
             std::printf ("       mono-sum %-16s worst band %.2f dB\n", pr.name, w);
             if (w < worstAll) { worstAll = w; who = pr.name; }
         }
-        char b[160]; std::snprintf (b, sizeof b, "mono-sum: no 1/3-oct band below -3 dB (worst %.2f dB, %s)", worstAll, who.c_str());
-        check (worstAll > -3.0f, b);
+        char b[160]; std::snprintf (b, sizeof b, "mono-sum: no 1/3-oct band below -2 dB (worst %.2f dB, %s)", worstAll, who.c_str());
+        check (worstAll > -2.0f, b);
     }
 
     // 8) zipper: fast black-hole jumps / param jumps -> no clicks (2nd-difference peak vs steady)

@@ -16,12 +16,12 @@
        mono-sum Vocal Halo       worst band -0.89 dB
        mono-sum Worn Cassette    worst band -1.13 dB
        mono-sum Periapsis        worst band -1.60 dB
-       mono-sum Event Horizon    worst band -1.57 dB
+       mono-sum Event Horizon    worst band -1.56 dB
        mono-sum Stepping Stones  worst band -1.28 dB
-       mono-sum Tidal Pad        worst band -2.82 dB
-[PASS] mono-sum: no 1/3-oct band below -3 dB (worst -2.82 dB, Tidal Pad)
+       mono-sum Tidal Pad        worst band -1.88 dB
+[PASS] mono-sum: no 1/3-oct band below -2 dB (worst -1.88 dB, Tidal Pad)
 [PASS] zipper (8 params jumping every 21 ms): worst 2nd-diff during jumps 0.0458 vs steady 0.0319 (ratio 1.43, expect <= 1.5)
-[PASS] CPU (1 core): worst-case 4 voices 0.66 %, default preset 0.32 % (target < 2 %)
+[PASS] CPU (1 core): worst-case 4 voices 0.71 %, default preset 0.33 % (target < 2 %)
 [INFO] renders written to renders
 
 ALL TESTS PASSED (0 failures)

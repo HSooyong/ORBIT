@@ -12,16 +12,20 @@ enum Idx { RATE, SYNC, PHASE, SHAPE, STAGES, ECC, RADIUS, BHX, BHY, GRAV, HOR, F
 static_assert (NUM == 25, "25 params");
 
 using FA = juce::AudioParameterFloatAttributes;
-std::unique_ptr<juce::AudioParameterFloat> pf (int i, const char* name, float lo, float hi, float def, const char* label = "", float skew = 1.0f)
+using Fmt = std::function<juce::String (float)>;
+juce::String num (float v, int dec) { return juce::String (v, dec); }
+std::unique_ptr<juce::AudioParameterFloat> pf (int i, const char* name, float lo, float hi, float def, const char* label = "", float skew = 1.0f, Fmt fmt = {})
 {
+    if (! fmt) fmt = [lo, hi, lab = juce::String (label)] (float v) {
+        const float span = hi - lo; auto t = num (v, span > 20.0f ? 1 : (span > 2.5f ? 2 : 2)); return lab.isEmpty() ? t : t + " " + lab; };
     return std::make_unique<juce::AudioParameterFloat> (juce::ParameterID { kIds[i], 1 }, name,
         juce::NormalisableRange<float> (lo, hi, 0.0f, skew), def,
-        FA().withLabel (label).withStringFromValueFunction ([lo, hi] (float v, int) {
-            const float span = hi - lo; return juce::String (v, span > 20.0f ? 1 : (span > 2.5f ? 2 : 3)); }));
+        FA().withLabel (label).withStringFromValueFunction ([fmt] (float v, int) { return fmt (v); })
+            .withValueFromStringFunction ([] (const juce::String& t) { return t.retainCharacters ("-+.0123456789").getFloatValue(); }));
 }
 std::unique_ptr<juce::AudioParameterFloat> pct (int i, const char* name, float def)
 {
-    return pf (i, name, 0.0f, 100.0f, def, "%");
+    return pf (i, name, 0.0f, 100.0f, def, "%", 1.0f, [] (float v) { return num (v, 0) + " %"; });
 }
 }
 
@@ -36,32 +40,32 @@ OrbitAudioProcessor::OrbitAudioProcessor()
 juce::AudioProcessorValueTreeState::ParameterLayout OrbitAudioProcessor::createParameterLayout()
 {
     std::vector<std::unique_ptr<juce::RangedAudioParameter>> v;
-    v.push_back (pf (RATE, "Rate", 0.02f, 10.0f, 0.35f, "Hz", 0.4f));
+    v.push_back (pf (RATE, "Rate", 0.02f, 10.0f, 0.35f, "Hz", 0.4f, [] (float v) { return num (v, v < 1 ? 2 : 1) + " Hz"; }));
     v.push_back (std::make_unique<juce::AudioParameterChoice> (juce::ParameterID { kIds[SYNC], 1 }, "Sync",
         juce::StringArray { "Free", "4/1", "2/1", "1/1", "1/2D", "1/2", "1/4D", "1/4", "1/8", "1/8T", "1/16" }, 0));
-    v.push_back (pf (PHASE, "Phase", 0.0f, 1.0f, 0.0f, "cyc"));
-    v.push_back (pf (SHAPE, "Shape", 0.0f, 1.0f, 0.2f));
+    v.push_back (pf (PHASE, "Phase", 0.0f, 1.0f, 0.0f, "deg", 1.0f, [] (float v) { return num (v * 360.0f, 0) + juce::String (juce::CharPointer_UTF8 ("\xc2\xb0")); }));
+    v.push_back (pf (SHAPE, "Shape", 0.0f, 1.0f, 0.2f, "%", 1.0f, [] (float v) { return num (v * 100, 0) + " % tri"; }));
     v.push_back (std::make_unique<juce::AudioParameterChoice> (juce::ParameterID { kIds[STAGES], 1 }, "Stages",
         juce::StringArray { "Smooth", "2", "3", "4", "5", "6", "8", "12", "16" }, 0));
-    v.push_back (pf (ECC, "Eccentricity", 0.0f, 0.9f, 0.3f));
-    v.push_back (pf (RADIUS, "Orbit Size", 0.2f, 1.0f, 0.7f));
-    v.push_back (pf (BHX, "Black Hole X", -1.0f, 1.0f, 0.85f));
-    v.push_back (pf (BHY, "Black Hole Y", -1.0f, 1.0f, 0.0f));
+    v.push_back (pf (ECC, "Eccentricity", 0.0f, 0.9f, 0.3f, "e", 1.0f, [] (float v) { return "e " + num (v, 2); }));
+    v.push_back (pf (RADIUS, "Orbit Size", 0.2f, 1.0f, 0.7f, "%", 1.0f, [] (float v) { return num (v * 100, 0) + " %"; }));
+    v.push_back (pf (BHX, "Black Hole X", -1.0f, 1.0f, 0.85f, "", 1.0f, [] (float v) { return (v >= 0 ? "+" : "") + num (v, 2); }));
+    v.push_back (pf (BHY, "Black Hole Y", -1.0f, 1.0f, 0.0f, "", 1.0f, [] (float v) { return (v >= 0 ? "+" : "") + num (v, 2); }));
     v.push_back (pct (GRAV, "Gravity", 50.0f));
-    v.push_back (pf (HOR, "Horizon", 0.05f, 0.5f, 0.2f));
-    v.push_back (pct (FLOOR, "Space Chorus", 15.0f));
-    v.push_back (pct (WARP, "Wow", 60.0f));
-    v.push_back (pct (FLUT, "Flutter", 30.0f));
+    v.push_back (pf (HOR, "Horizon", 0.05f, 0.5f, 0.2f, "r", 1.0f, [] (float v) { return "r " + num (v, 2); }));
+    v.push_back (pf (FLOOR, "Space Chorus", 0.0f, 100.0f, 15.0f, "%", 1.0f, [] (float v) { return num (v, 0) + " % (" + num (v * 0.20f, 0) + " ct)"; }));
+    v.push_back (pf (WARP, "Wow", 0.0f, 100.0f, 60.0f, "%", 1.0f, [] (float v) { return num (v, 0) + " % (" + num (v * 1.20f, 0) + " ct)"; }));
+    v.push_back (pf (FLUT, "Flutter", 0.0f, 100.0f, 30.0f, "%", 1.0f, [] (float v) { return num (v, 0) + " % (" + num (v * 0.35f, 0) + " ct)"; }));
     v.push_back (pct (CHAOS, "Chaos", 25.0f));
     v.push_back (std::make_unique<juce::AudioParameterChoice> (juce::ParameterID { kIds[VOICES], 1 }, "Voices",
         juce::StringArray { "1", "2", "3", "4" }, 1));
     v.push_back (pct (WIDTH, "Width", 70.0f));
-    v.push_back (pf (FB, "Feedback", 0.0f, 70.0f, 0.0f, "%"));
-    v.push_back (pf (TONE, "Tone", -1.0f, 1.0f, 0.0f));
+    v.push_back (pf (FB, "Feedback", 0.0f, 70.0f, 0.0f, "%", 1.0f, [] (float v) { return num (v, 0) + " %"; }));
+    v.push_back (pf (TONE, "Tone", -1.0f, 1.0f, 0.0f, "", 1.0f, [] (float v) { return std::abs (v) < 0.005f ? juce::String ("Flat") : (v < 0 ? "Dark " : "Bright ") + num (std::abs (v) * 100, 0) + " %"; }));
     v.push_back (pct (DRIVE, "Tape", 0.0f));
     v.push_back (std::make_unique<juce::AudioParameterBool> (juce::ParameterID { kIds[KEPLER], 1 }, "Kepler", true));
     v.push_back (pct (MIX, "Mix", 35.0f));
-    v.push_back (pf (OUT, "Output", -12.0f, 12.0f, 0.0f, "dB"));
+    v.push_back (pf (OUT, "Output", -12.0f, 12.0f, 0.0f, "dB", 1.0f, [] (float v) { return (v > 0.05f ? "+" : "") + num (v, 1) + " dB"; }));
     v.push_back (std::make_unique<juce::AudioParameterBool> (juce::ParameterID { kIds[HOLD], 1 }, "Hold", false));
     v.push_back (pct (BLOOM, "Horizon Bloom", 0.0f));
     return { v.begin(), v.end() };

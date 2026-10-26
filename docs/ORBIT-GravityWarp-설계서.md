@@ -17,7 +17,7 @@
 | 5 | Chaos | 화이트 노이즈 + 1-pole | 랜덤 점들 사이를 코사인으로 보간하는 노이즈(주기 0.55 s + 0.07 s·i). 화이트 노이즈는 미분값이 커서 424 cent까지 튀었음 |
 | 6 | 파라미터 | 안 | **25개**, X/Y 파라미터 없음. 행성을 드래그하면 Phase와 Orbit Size가 바뀜. 25개: rate, sync, phase, shape, stages, ecc, radius, bh_x, bh_y, gravity, horizon, floor(Space Chorus), warp(Wow), flutter, chaos, voices, width, feedback, tone, drive(Tape), kepler, mix, output, hold, bloom |
 | 7 | Hold | 안 | 자동화 가능한 bool. 행성을 드래그하는 동안에는 임시로 켜졌다가, 놓으면 원래 상태로 돌아감 |
-| 8 | Horizon Bloom | 안 | d < 0.3·rs일 때 wet −1.5 dB, 피드백 +10%(총합 상한 70%). 프리셋 값은 Event Horizon 60%, **Tidal Pad 20%**(A/B 후 채택), 나머지 0% |
+| 8 | Horizon Bloom | 안 | **존 확대(2026-10-26): d < 0.6·rs에서 시작해 0.3·rs에서 최대**(이전 0.3→0.15·rs). wet −1.5 dB, 피드백 +10%(총합 상한 70%). 프리셋: Event Horizon 60%, **Tidal Pad 20%**, 나머지 0%. 구·신 존 A/B(같은 설정): 블룸 0% 프리셋 5개는 비트 단위 동일, Event Horizon −0.05 dB (차이 신호 −32.8 dB), Tidal Pad −0.02 dB (−40.7 dB, 블룸 최대치 0.07→0.20). `tests/bloom_zone_ab_results.txt` |
 | 9 | Sync | 7종 | 11종: Free, 4/1, 2/1, 1/1, 1/2D, 1/2, 1/4D, 1/4, 1/8, 1/8T, 1/16. PPQ에 잠그고 10 ms 슬루로 보정 |
 | 10 | 제거 | v0.3 트레몰로/팬, HQ 모드, 테스트 톤 | 셋 다 제거. 220 Hz 무음 입력 톤은 없음(무음 입력이면 무음 출력) |
 | 11 | 호환성 | 안 | v0.3 상태와 호환하지 않음. 새 플러그인 코드 OrGw, 제조사 PLab |
@@ -27,10 +27,12 @@
 | 15 | Kepler | 안 | 균등한 시간 → 각도 테이블(256개, dt/dθ ∝ ρ²) 사용, 토글 가능 |
 | 16 | GUI | 6장 | 920×640. 좌: ORBIT/MOTION(Rate, Phase, Shape, Ecc, Orbit Size, Gravity, Sync, Stages). 우: SOUND CHARACTER(Wow, Flutter, Chaos, Width, Tape, Tone, Mix, Output). 접히는 ADVANCED(Horizon, H.Bloom, Space Chorus, Feedback, Hole X/Y, Voices, Kepler). 헤더: 프리셋 ◀▶, HOLD |
 | 17 | 필드 제스처 | 6.3 | 행성 드래그 → Phase/Orbit Size · 블랙홀 드래그 → BH X/Y · 블랙홀 위에서 휠 → Gravity · 빈 곳 더블클릭 → 블랙홀 이동. 모든 제스처가 begin/endChangeGesture를 보냄 |
+| 19 | Tidal Pad Width | 100% | **75%**: mono-sum 최악 대역 −2.82 → −1.88 dB |
+| 20 | 값 표시 단위 | 안 | % · Hz · dB · ° (Phase) · Wow/Flutter/Space Chorus는 "% (최대 ct)" · Tone은 Dark/Flat/Bright · Ecc는 "e 0.30" · Horizon은 "r 0.20" · Sync가 켜지면 Rate 칸에 "Sync 1/4" 표시. ms 단위 파라미터는 없음 |
 | 18 | 비주얼 | 6.2 | 오디오 텔레메트리(px, py, bh, d, g, cents, wowHz, bloom, theta)로 구동: 별빛 렌즈 효과, 얇고 기울어진 따뜻한 강착원반과 휘어진 윗호, 포톤 링, 빨려 들어가는 먼지(g, bloom에 비례), 중력 쪽으로 늘어나는 행성 꼬리와 조석 변형, 보이스 수 = 위성 수. 네온 없음 |
 
 ### 테스트 기준 (v0.2에서 확정, 결과는 `tests/last_results.txt`)
-무음 입력이면 무음 출력 · 구역별 센트(far ≤4, mid 5–30, near 50–100) · 상한 ≤100 cent · SR 44.1–192k 편차 ≤0.5 cent · 결정론(블록 크기와 무관하게 비트 단위로 같음) · 피드백 70%에서 안정 · **mono-sum**: 1/3옥타브 대역 중 −3 dB 아래로 떨어지는 대역 없음 · **zipper**: 파라미터 8개를 21 ms마다 점프시켜도 2차 차분 피크가 정상 상태의 1.5배 이하 · **CPU**: 최악 조건(4보이스)에서 코어 1개 기준 < 2%
+무음 입력이면 무음 출력 · 구역별 센트(far ≤4, mid 5–30, near 50–100) · 상한 ≤100 cent · SR 44.1–192k 편차 ≤0.5 cent · 결정론(블록 크기와 무관하게 비트 단위로 같음) · 피드백 70%에서 안정 · **mono-sum**: 1/3옥타브 대역 중 −2 dB 아래로 떨어지는 대역 없음 (v0.2 초안은 −3 dB) · **zipper**: 파라미터 8개를 21 ms마다 점프시켜도 2차 차분 피크가 정상 상태의 1.5배 이하 · **CPU**: 최악 조건(4보이스)에서 코어 1개 기준 < 2%
 
 ---
 ## 0. 기존 자료 요약

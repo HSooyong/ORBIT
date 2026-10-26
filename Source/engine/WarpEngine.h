@@ -288,7 +288,7 @@ private:
         const float d = std::clamp (std::hypot (px - bhx, py - bhy) / 2.0f, 0.0f, 1.0f);
         const float rs = std::clamp (horS.v, 0.05f, 0.5f);
         const float g = std::clamp (gravS.v, 0.0f, 1.0f) / (1.0f + std::pow (d / rs, 2.5f));
-        const float bloomT = std::clamp (p.bloom, 0.0f, 1.0f) * std::clamp ((rs * 0.3f - d) / (rs * 0.15f), 0.0f, 1.0f);
+        const float bloomT = std::clamp (p.bloom, 0.0f, 1.0f) * std::clamp ((rs * 0.6f - d) / (rs * 0.3f), 0.0f, 1.0f);
         bloomS.step (bloomT, a30);
 
         const float fWow = 0.25f + 1.2f * g;

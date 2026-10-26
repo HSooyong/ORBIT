@@ -8,6 +8,8 @@ option(ORBIT_BUILD_PLUGIN "Build JUCE plugin" ON)
 # Engine-only offline tests (no JUCE)
 add_executable(orbit_render_test tests/render_test.cpp)
 add_executable(orbit_bloom_ab tests/bloom_ab.cpp)
+add_executable(orbit_bloom_zone_ab tests/bloom_zone_ab.cpp)
+target_include_directories(orbit_bloom_zone_ab PRIVATE Source)
 target_include_directories(orbit_bloom_ab PRIVATE Source)
 target_include_directories(orbit_render_test PRIVATE Source)
 

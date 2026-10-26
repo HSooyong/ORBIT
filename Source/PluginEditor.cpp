@@ -4,7 +4,7 @@ OrbitEditor::Knob* OrbitEditor::knob (const char* id, const char* label)
 {
     auto k = std::make_unique<Knob>();
     k->s.setSliderStyle (juce::Slider::RotaryHorizontalVerticalDrag);
-    k->s.setTextBoxStyle (juce::Slider::TextBoxBelow, false, 70, 15);
+    k->s.setTextBoxStyle (juce::Slider::TextBoxBelow, false, 84, 15);
     k->s.setRotaryParameters (juce::degreesToRadians (225.0f), juce::degreesToRadians (495.0f), true);
     k->s.setColour (juce::Slider::textBoxBackgroundColourId, juce::Colour (0xff0b0d10));
     k->s.setColour (juce::Slider::textBoxOutlineColourId, juce::Colour (0xff23292f));
@@ -42,7 +42,18 @@ OrbitEditor::OrbitEditor (OrbitAudioProcessor& p) : AudioProcessorEditor (p), pr
               knob ("drive", "TAPE"), knob ("tone", "TONE"), knob ("mix", "MIX"), knob ("output", "OUTPUT") };
     adv   = { knob ("horizon", "HORIZON"), knob ("bloom", "H. BLOOM"), knob ("floor", "SPACE CHORUS"), knob ("feedback", "FEEDBACK"),
               knob ("bh_x", "HOLE X"), knob ("bh_y", "HOLE Y") };
-    sync = combo ("sync", "SYNC"); stages = combo ("stages", "STAGES"); voices = combo ("voices", "VOICES");
+    sync = combo ("sync", "SYNC");
+    {
+        auto* rateK = left[0];
+        auto* syncP = proc.apvts.getParameter ("sync");
+        auto* rateP = proc.apvts.getParameter ("rate");
+        rateK->s.textFromValueFunction = [syncP, rateP] (double v) {
+            const int si = juce::roundToInt (syncP->convertFrom0to1 (syncP->getValue()));
+            if (si > 0) return "Sync " + syncP->getCurrentValueAsText();
+            return rateP->getText (rateP->convertTo0to1 ((float) v), 0); };
+        rateK->s.updateText();
+        sync->c.onChange = [rateK] { rateK->s.updateText(); };
+    } stages = combo ("stages", "STAGES"); voices = combo ("voices", "VOICES");
 
     for (int i = 0; i < proc.getNumPrograms(); ++i) presetBox.addItem (proc.getProgramName (i), i + 1);
     presetBox.setSelectedId (proc.getCurrentProgram() + 1, juce::dontSendNotification);

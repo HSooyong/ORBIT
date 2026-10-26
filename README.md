@@ -17,3 +17,4 @@ Validate: `xvfb-run -a pluginval --strictness-level 5 --validate-in-process "bui
 - Snapshot: `xvfb-run -a build/orbit_gui_snapshot_artefacts/Release/orbit_gui_snapshot docs 3` -> `docs/gui_m2.png`, `docs/gui_m2_advanced.png`.
 - Tests: `build/orbit_render_test renders` (adds mono-sum, zipper, CPU). Bloom A/B: `build/orbit_bloom_ab renders/ab` -> `tests/bloom_ab_results.txt`.
 - renders/ and build logs are git-ignored.
+- Bloom zone A/B vs 350c85d engine: `build/orbit_bloom_zone_ab` -> `tests/bloom_zone_ab_results.txt`.
