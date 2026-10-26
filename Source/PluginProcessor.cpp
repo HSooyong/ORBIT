@@ -1,4 +1,5 @@
 #include "PluginProcessor.h"
+#include "PluginEditor.h"
 
 namespace
 {
@@ -14,7 +15,9 @@ using FA = juce::AudioParameterFloatAttributes;
 std::unique_ptr<juce::AudioParameterFloat> pf (int i, const char* name, float lo, float hi, float def, const char* label = "", float skew = 1.0f)
 {
     return std::make_unique<juce::AudioParameterFloat> (juce::ParameterID { kIds[i], 1 }, name,
-        juce::NormalisableRange<float> (lo, hi, 0.0f, skew), def, FA().withLabel (label));
+        juce::NormalisableRange<float> (lo, hi, 0.0f, skew), def,
+        FA().withLabel (label).withStringFromValueFunction ([lo, hi] (float v, int) {
+            const float span = hi - lo; return juce::String (v, span > 20.0f ? 1 : (span > 2.5f ? 2 : 3)); }));
 }
 std::unique_ptr<juce::AudioParameterFloat> pct (int i, const char* name, float def)
 {
@@ -137,12 +140,12 @@ void OrbitAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::
     engine.process (inL, inR, outL, outR, n, readParams(), host);
 
     const auto& t = engine.telemetry();
-    visPx = t.px; visPy = t.py; visBhX = t.bhX; visBhY = t.bhY; visD = t.d; visG = t.g; visCents = t.cents; visBloom = t.bloom;
+    visPx = t.px; visPy = t.py; visBhX = t.bhX; visBhY = t.bhY; visD = t.d; visG = t.g; visCents = t.cents; visBloom = t.bloom; visTheta = t.theta; visWowHz = t.wowHz;
 }
 
 juce::AudioProcessorEditor* OrbitAudioProcessor::createEditor()
 {
-    return new juce::GenericAudioProcessorEditor (*this); // M1: generic knobs only (custom GUI = M3)
+    return new OrbitEditor (*this);
 }
 
 void OrbitAudioProcessor::getStateInformation (juce::MemoryBlock& dest)

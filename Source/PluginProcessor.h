@@ -36,8 +36,8 @@ public:
     static juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout();
     juce::AudioProcessorValueTreeState apvts;
 
-    // GUI telemetry (audio -> GUI), for the black-hole visual (M3)
-    std::atomic<float> visPx { 0 }, visPy { 0 }, visBhX { 0 }, visBhY { 0 }, visD { 1 }, visG { 0 }, visCents { 0 }, visBloom { 0 };
+    // GUI telemetry (audio -> GUI), for the black-hole visual (M2 editor)
+    std::atomic<float> visPx { 0 }, visPy { 0 }, visBhX { 0 }, visBhY { 0 }, visD { 1 }, visG { 0 }, visCents { 0 }, visBloom { 0 }, visTheta { 0 }, visWowHz { 0 };
 
 private:
     orbit::Params readParams() const;

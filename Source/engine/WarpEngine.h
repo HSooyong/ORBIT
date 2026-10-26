@@ -32,7 +32,7 @@ struct Params
 
 struct HostInfo { bool hasBpm = false; double bpm = 120.0; bool playing = false; bool hasPpq = false; double ppq = 0.0; };
 
-struct Telemetry { float px = 0, py = 0, bhX = 0, bhY = 0, d = 1, g = 0, cents = 0, wowHz = 0, bloom = 0; float voiceCents[4] {}; };
+struct Telemetry { float px = 0, py = 0, bhX = 0, bhY = 0, d = 1, g = 0, cents = 0, wowHz = 0, bloom = 0; float voiceCents[4] {}; float theta = 0; };
 
 struct XorShift32
 {
@@ -328,17 +328,20 @@ private:
             const float nz = nA[i] + (nB[i] - nA[i]) * (float) (0.5 - 0.5 * std::cos (kPi * nPos[i]));
             const float aNz = cN / (kCentsPerLn * (float) (kPi / (2.0 * T)));
             const float aCh = cCh / (k2pi * (float) fCh);
-            const float wv = orbitWave (wowPh + (double) i / nv, std::clamp (p.shape, 0.0f, 1.0f));
-            const float off = nv > 1 ? 0.0011f * i : 0.0f;
+            // voice spread phase / pan glide when Voices changes (no zipper)
+            vPhOff[i] = wrap01 (vPhOff[i] + (first ? 1.0f : a30) * wrapDiff ((double) i / nv - vPhOff[i]));
+            const float wv = orbitWave (wowPh + vPhOff[i], std::clamp (p.shape, 0.0f, 1.0f));
+            const float off = 0.0011f * i;
             float dSec = base + off + aWow * wv + aNz * nz + aFl * flv
                          + aCh * (float) std::sin (chPh[i] * kTwoPi);
             dSec = std::clamp (dSec, 0.0005f, 0.045f);
             const float target = dSec * (float) sr;
             if (first) { dCur[i] = target; dInc[i] = 0; }
-            else dInc[i] = (target - dCur[i]) / (float) kCtrl;
+            else dInc[i] = std::clamp ((target - dCur[i]) / (float) kCtrl, -kMaxSlew, kMaxSlew); // hard pitch ceiling
 
             float pn = nv > 1 ? (-1.0f + 2.0f * i / (nv - 1)) * width : 0.0f;
-            pan[i] = std::clamp (pn + 0.15f * px, -1.0f, 1.0f);
+            const float panT = std::clamp (pn + 0.15f * px, -1.0f, 1.0f);
+            pan[i] = first ? panT : pan[i] + a30 * (panT - pan[i]);
             tele.voiceCents[i] = cWow + cFl + cCh;
             centsMax = std::max (centsMax, tele.voiceCents[i]);
         }
@@ -359,7 +362,7 @@ private:
         cDc = (float) std::exp (-kTwoPi * 10.0 / sr);
 
         tele = Telemetry { px, py, bhx, bhy, d, g, std::min (centsMax, kMaxCents), fWow, bloomS.v,
-                           { tele.voiceCents[0], tele.voiceCents[1], tele.voiceCents[2], tele.voiceCents[3] } };
+                           { tele.voiceCents[0], tele.voiceCents[1], tele.voiceCents[2], tele.voiceCents[3] }, (float) thetaS };
         first = false;
     }
 
@@ -368,6 +371,8 @@ private:
     int mask = 0, w = 0, tick = 0;
     bool first = true;
 
+    static constexpr float kMaxSlew = 0.0594f; // |d delay/dt| <= 1 - 2^(-100/1200)
+    std::array<double, 4> vPhOff {};
     double u = 0, thetaS = 0, phaseS = 0, wowPh = 0, fl1 = 0, fl2 = 0;
     float bhx = 0, bhy = 0;
     Sm gravS, warpS, flutS, chaosS, floorS, horS, radS, eccS, widthS, fbSm, toneSm, driveSm, bloomS;

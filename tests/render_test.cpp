@@ -4,6 +4,8 @@
 #include <cstdio>
 #include <cstring>
 #include <string>
+#include <chrono>
+#include <complex>
 
 using namespace orbit;
 static int fails = 0;
@@ -48,6 +50,34 @@ static CentStats measureCents (const std::vector<float>& x, int sr, double f0, i
     }
     st.rms = cnt ? (float) std::sqrt (acc / cnt) : 0.0f;
     return st;
+}
+
+
+static void fft (std::vector<std::complex<double>>& a)
+{
+    const size_t n = a.size();
+    for (size_t i = 1, j = 0; i < n; ++i) { size_t bit = n >> 1; for (; j & bit; bit >>= 1) j ^= bit; j ^= bit; if (i < j) std::swap (a[i], a[j]); }
+    for (size_t len = 2; len <= n; len <<= 1) { const double ang = -kTwoPi / (double) len; std::complex<double> wl (std::cos (ang), std::sin (ang));
+        for (size_t i = 0; i < n; i += len) { std::complex<double> w (1); for (size_t k = 0; k < len / 2; ++k) { auto u = a[i + k], v = a[i + k + len / 2] * w; a[i + k] = u + v; a[i + k + len / 2] = u - v; w *= wl; } } }
+}
+// worst 1/3-octave band (100 Hz..16 kHz) of mono-sum power relative to mean channel power, dB
+static float monoSumWorstDb (const std::vector<float>& L, const std::vector<float>& R, int sr)
+{
+    const size_t N = 4096; std::vector<double> pSum (N / 2), pCh (N / 2);
+    for (size_t off = (size_t) sr; off + N <= L.size(); off += N / 2)
+    {
+        std::vector<std::complex<double>> a (N), b (N);
+        for (size_t i = 0; i < N; ++i) { double w = 0.5 - 0.5 * std::cos (kTwoPi * i / N); a[i] = L[off + i] * w; b[i] = R[off + i] * w; }
+        fft (a); fft (b);
+        for (size_t k = 0; k < N / 2; ++k) { pSum[k] += std::norm (0.5 * (a[k] + b[k])); pCh[k] += 0.5 * (std::norm (a[k]) + std::norm (b[k])); }
+    }
+    float worst = 0;
+    for (double fc = 100; fc <= 16000; fc *= std::pow (2.0, 1.0 / 3.0))
+    {
+        double s = 0, c = 0; for (size_t k = 0; k < N / 2; ++k) { double f = (double) k * sr / N; if (f >= fc / 1.122 && f < fc * 1.122) { s += pSum[k]; c += pCh[k]; } }
+        if (c > 0) worst = std::min (worst, (float) (10 * std::log10 (s / c)));
+    }
+    return worst;
 }
 
 static Params zoneParams (float d)
@@ -151,6 +181,61 @@ int main (int argc, char** argv)
         float pk = 0, tail = 0; for (int i = 0; i < n; ++i) { pk = std::max (pk, std::abs (oL[(size_t) i])); if (i > n - sr) tail = std::max (tail, std::abs (oL[(size_t) i])); }
         char b[128]; std::snprintf (b, sizeof b, "feedback 70%% stable: peak %.2f, last-second peak %.2g", pk, tail);
         check (pk < 4.0f && tail < 1e-3f && std::isfinite (pk), b);
+    }
+
+
+    // 7) mono-sum: L+R vs mean channel power per 1/3 octave (white noise, mono in -> stereo, each preset)
+    {
+        const int n = sr * 8; std::vector<float> in ((size_t) n); XorShift32 r (99); for (auto& v : in) v = 0.3f * r.bipolar();
+        auto ps = factoryPresets(); float worstAll = 0; std::string who;
+        for (auto& pr : ps)
+        {
+            WarpEngine e; e.prepare (sr); std::vector<float> oL, oR; render (e, in, in, oL, oR, pr.p, 512);
+            float w = monoSumWorstDb (oL, oR, sr);
+            std::printf ("       mono-sum %-16s worst band %.2f dB\n", pr.name, w);
+            if (w < worstAll) { worstAll = w; who = pr.name; }
+        }
+        char b[160]; std::snprintf (b, sizeof b, "mono-sum: no 1/3-oct band below -3 dB (worst %.2f dB, %s)", worstAll, who.c_str());
+        check (worstAll > -3.0f, b);
+    }
+
+    // 8) zipper: fast black-hole jumps / param jumps -> no clicks (2nd-difference peak vs steady)
+    {
+        const int n = sr * 6; std::vector<float> in ((size_t) n);
+        for (int i = 0; i < n; ++i) in[(size_t) i] = 0.5f * (float) std::sin (kTwoPi * 1000.0 * i / sr);
+        auto d2peak = [&] (const std::vector<float>& y, int from, int to) { float m = 0; for (int i = std::max (2, from); i < to; ++i) m = std::max (m, std::abs (y[(size_t) i] - 2 * y[(size_t) i - 1] + y[(size_t) i - 2])); return m; };
+        Params base = factoryPresets()[0].p;
+        auto setState = [] (Params& q, bool a) { q.bhX = a ? -1.0f : 0.7f; q.bhY = a ? 1.0f : 0.0f; q.gravity = a ? 0.0f : 1.0f;
+            q.mix = a ? 0.0f : 1.0f; q.outputDb = a ? -12.0f : 6.0f; q.voices = a ? 1 : 4; q.phase = a ? 0.1f : 0.9f; q.tone = a ? -1.0f : 1.0f; };
+        float steady = 0; // reference = worst steady-state of the two end states (same modulation, no jumps)
+        for (bool a : { false, true }) { Params q = base; setState (q, a); WarpEngine e0; e0.prepare (sr); std::vector<float> sL, sR; render (e0, in, in, sL, sR, q, 256); steady = std::max (steady, d2peak (sL, sr, n)); }
+        WarpEngine e; e.prepare (sr); std::vector<float> L ((size_t) n), R ((size_t) n); HostInfo h; Params p = base;
+        int blk = 0;
+        for (int s = 0; s < n; s += 128, ++blk)
+        {
+            if (s > sr) setState (p, (blk / 8) % 2);
+            e.process (in.data() + s, in.data() + s, L.data() + s, R.data() + s, std::min (128, n - s), p, h);
+        }
+        const float jumpy = d2peak (L, sr, n);
+        char b[160]; std::snprintf (b, sizeof b, "zipper (8 params jumping every 21 ms): worst 2nd-diff during jumps %.4f vs steady %.4f (ratio %.2f, expect <= 1.5)", jumpy, steady, jumpy / steady);
+        check (jumpy <= 1.5f * steady, b);
+    }
+
+    // 9) CPU: 4 voices, worst-case settings, 48 kHz stereo, 512 blocks
+    {
+        Params p = zoneParams (0.1f); p.voices = 4; p.feedback = 0.5f; p.drive = 0.5f; p.tone = 0.5f; p.chaos = 1; p.hold = false; p.mix = 0.5f;
+        const int n = sr * 20; std::vector<float> in ((size_t) n); XorShift32 r (3); for (auto& v : in) v = 0.3f * r.bipolar();
+        std::vector<float> L ((size_t) n), R ((size_t) n); WarpEngine e; e.prepare (sr); HostInfo h;
+        auto t0 = std::chrono::steady_clock::now();
+        for (int s = 0; s < n; s += 512) e.process (in.data() + s, in.data() + s, L.data() + s, R.data() + s, 512, p, h);
+        const double sec = std::chrono::duration<double> (std::chrono::steady_clock::now() - t0).count();
+        const double pct = 100.0 * sec / 20.0;
+        Params q = factoryPresets()[0].p; WarpEngine e2; e2.prepare (sr);
+        t0 = std::chrono::steady_clock::now();
+        for (int s = 0; s < n; s += 512) e2.process (in.data() + s, in.data() + s, L.data() + s, R.data() + s, 512, q, h);
+        const double pct2 = 100.0 * std::chrono::duration<double> (std::chrono::steady_clock::now() - t0).count() / 20.0;
+        char b[160]; std::snprintf (b, sizeof b, "CPU (1 core): worst-case 4 voices %.2f %%, default preset %.2f %% (target < 2 %%)", pct, pct2);
+        check (pct < 2.0, b);
     }
 
     // 6) listening renders: chord-ish saw pad through presets + BH sweep

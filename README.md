@@ -11,3 +11,9 @@ Design: `/workspace/orbit-design/ORBIT-GravityWarp-설계서.md`. Base reference
 Build: `cmake -B build -DCMAKE_BUILD_TYPE=Release && cmake --build build -j8`
 Test:  `./build/orbit_render_test renders`
 Validate: `xvfb-run -a pluginval --strictness-level 5 --validate-in-process "build/ORBIT_GravityWarp_artefacts/Release/VST3/ORBIT Gravity Warp.vst3"`
+
+## M2 (2026-10-26)
+- Custom 920x640 GUI: `Source/PluginEditor.*`, `Source/OrbitLookAndFeel.*` (from v0.3), `Source/GravityField.*` (black hole visual + planet/hole drag).
+- Snapshot: `xvfb-run -a build/orbit_gui_snapshot_artefacts/Release/orbit_gui_snapshot docs 3` -> `docs/gui_m2.png`, `docs/gui_m2_advanced.png`.
+- Tests: `build/orbit_render_test renders` (adds mono-sum, zipper, CPU). Bloom A/B: `build/orbit_bloom_ab renders/ab` -> `tests/bloom_ab_results.txt`.
+- renders/ and build logs are git-ignored.

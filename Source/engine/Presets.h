@@ -24,7 +24,7 @@ inline std::array<Preset, 7> factoryPresets()
     ps[4] = { "Event Horizon", e };
     Params f = defaults(); f.stages = 6; f.sync = 8; f.shape = 0.6f; f.bhX = 0.5f; f.gravity = 0.7f; f.mix = 0.5f;
     ps[5] = { "Stepping Stones", f };
-    Params g = defaults(); g.rate = 0.05f; g.warp = 0.9f; g.voices = 4; g.width = 1.0f; g.mix = 0.6f; g.bhX = 0.6f; g.gravity = 0.6f;
+    Params g = defaults(); g.rate = 0.05f; g.warp = 0.9f; g.voices = 4; g.width = 1.0f; g.mix = 0.6f; g.bhX = 0.6f; g.gravity = 0.6f; g.bloom = 0.20f;
     ps[6] = { "Tidal Pad", g };
     return ps;
 }

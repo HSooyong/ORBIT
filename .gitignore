@@ -1,2 +1,5 @@
 build/
-renders/*.wav
+renders/
+*.wav
+build.log
+pluginval*.log
