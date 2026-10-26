@@ -11,17 +11,18 @@
 [PASS] SR 44.1-192k, d=0.15: rms cent spread = 0.295 (target <= 0.5)
 [PASS] determinism across block sizes: max diff = 0
 [PASS] fixed seed: two runs bit-identical
-[PASS] feedback 70% stable: peak 1.61, last-second peak 6.2e-44
+[PASS] feedback 70% stable: peak 1.67, last-second peak 5.3e-44
        mono-sum Low Orbit        worst band -0.87 dB
        mono-sum Vocal Halo       worst band -0.89 dB
        mono-sum Worn Cassette    worst band -1.13 dB
        mono-sum Periapsis        worst band -1.60 dB
-       mono-sum Event Horizon    worst band -1.56 dB
+       mono-sum Event Horizon    worst band -1.57 dB
        mono-sum Stepping Stones  worst band -1.28 dB
-       mono-sum Tidal Pad        worst band -1.88 dB
-[PASS] mono-sum: no 1/3-oct band below -2 dB (worst -1.88 dB, Tidal Pad)
-[PASS] zipper (8 params jumping every 21 ms): worst 2nd-diff during jumps 0.0458 vs steady 0.0319 (ratio 1.43, expect <= 1.5)
-[PASS] CPU (1 core): worst-case 4 voices 0.71 %, default preset 0.33 % (target < 2 %)
+       mono-sum Tidal Pad        worst band -1.84 dB
+[PASS] mono-sum: no 1/3-oct band below -2 dB (worst -1.84 dB, Tidal Pad)
+[PASS] zipper (8 params jumping every 21 ms): worst 2nd-diff during jumps 0.0437 vs steady 0.0298 (ratio 1.47, expect <= 1.5)
+[PASS] CPU (1 core): worst-case 4 voices 0.94 %, default preset 0.39 % (target < 2 %)
 [INFO] renders written to renders
+[PASS] level match vs dry: worst |dLUFS| 0.40 LU over 24 cases (limit 0.5), 0 over
 
 ALL TESTS PASSED (0 failures)

@@ -82,6 +82,9 @@ public:
         int sz = 1; while (sz < need) sz <<= 1;
         for (auto& b : buf) b.assign ((size_t) sz, 0.0f);
         mask = sz - 1;
+        kwIn.design (sr); kwInR.design (sr); kwOut.design (sr); kwOutR.design (sr);
+        lmA = (float) (1.0 - std::exp (-1.0 / (0.4 * sr)));  // 400 ms power detector
+        lmB = (float) (1.0 - std::exp (-1.0 / (1.5 * sr)));  // 1.5 s gain glide (no pumping)
         reset();
     }
 
@@ -98,6 +101,7 @@ public:
         flRng = XorShift32 (0xC0FFEEu); flNoise = 0;
         for (int c = 0; c < 2; ++c) { fbHp[c] = fbLp[c] = toneLp[c] = shelfLp[c] = tapeLp[c] = OnePole(); fbSig[c] = 0; dcX[c] = dcY[c] = 0; }
         keplerEcc = -1.0f;
+        kwIn.clear(); kwInR.clear(); kwOut.clear(); kwOutR.clear(); pIn = pOut = 0; lmG = 1;
     }
 
     const Telemetry& telemetry() const { return tele; }
@@ -192,8 +196,19 @@ public:
             outS += perSample20 * (outT - outS);
             const float dg = std::cos (mixS * 1.5707964f);
             const float wg = std::sin (mixS * 1.5707964f) * bloomGain;
-            const float ol = (xl * dg + wet[0] * wg) * outS;
-            const float orr = (xr * dg + wet[1] * wg) * outS;
+            float ol = xl * dg + wet[0] * wg;
+            float orr = xr * dg + wet[1] * wg;
+            // ---- LevelMatch: keep the mixed bus at the dry input's K-weighted loudness (see design doc 11.x).
+            {
+                const float il = kwIn.process (xl), ir = kwInR.process (xr), kl = kwOut.process (ol), kr = kwOutR.process (orr);
+                pIn += lmA * (0.5f * (il * il + ir * ir) - pIn); pOut += lmA * (0.5f * (kl * kl + kr * kr) - pOut);
+                if (pIn > 1e-6f && pOut > 1e-9f) // gate: only learn while input is present (tails keep the last gain)
+                {
+                    const float tgt = std::clamp (std::sqrt (pIn / pOut), kLmMin, kLmMax);
+                    lmG += lmB * (tgt - lmG);
+                }
+            }
+            ol *= lmG * outS; orr *= lmG * outS;
             if (outR) { outL[s] = ol; outR[s] = orr; }
             else outL[s] = 0.5f * (ol + orr);
         }
@@ -377,6 +392,28 @@ private:
     float bhx = 0, bhy = 0;
     Sm gravS, warpS, flutS, chaosS, floorS, horS, radS, eccS, widthS, fbSm, toneSm, driveSm, bloomS;
     float mixS = 0, outS = 1;
+    struct KW // BS.1770 K-weighting (shelf + RLB), float, mono detector
+    {
+        float b[2][5] {}, z[2][2] {};
+        void design (double fs)
+        {
+            double K = std::tan (3.14159265358979 * 1681.974450955533 / fs), Q = 0.7071752369554196, Vh = std::pow (10.0, 3.999843853973347 / 20.0), Vb = std::pow (Vh, 0.4996667741545416);
+            double a0 = 1 + K / Q + K * K;
+            const double s1[5] = { (Vh + Vb * K / Q + K * K) / a0, 2 * (K * K - Vh) / a0, (Vh - Vb * K / Q + K * K) / a0, 2 * (K * K - 1) / a0, (1 - K / Q + K * K) / a0 };
+            K = std::tan (3.14159265358979 * 38.13547087602444 / fs); Q = 0.5003270373238773; a0 = 1 + K / Q + K * K;
+            const double s2[5] = { 1, -2, 1, 2 * (K * K - 1) / a0, (1 - K / Q + K * K) / a0 };
+            for (int i = 0; i < 5; ++i) { b[0][i] = (float) s1[i]; b[1][i] = (float) s2[i]; }
+            clear();
+        }
+        void clear() { for (auto& r : z) r[0] = r[1] = 0; }
+        float process (float x)
+        {
+            for (int k = 0; k < 2; ++k) { const float y = b[k][0] * x + z[k][0]; z[k][0] = b[k][1] * x - b[k][3] * y + z[k][1]; z[k][1] = b[k][2] * x - b[k][4] * y; x = y; }
+            return x;
+        }
+    } kwIn, kwInR, kwOut, kwOutR;
+    static constexpr float kLmMin = 0.5f, kLmMax = 1.19f; // -6 dB .. +1.5 dB
+    float pIn = 0, pOut = 0, lmG = 1, lmA = 0, lmB = 0;
 
     static constexpr int kK = 256;
     std::array<double, kK + 1> cum {};

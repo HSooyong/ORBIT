@@ -29,6 +29,7 @@
 | 17 | 필드 제스처 | 6.3 | 행성 드래그 → Phase/Orbit Size · 블랙홀 드래그 → BH X/Y · 블랙홀 위에서 휠 → Gravity · 빈 곳 더블클릭 → 블랙홀 이동. 모든 제스처가 begin/endChangeGesture를 보냄 |
 | 19 | Tidal Pad Width | 100% | **75%**: mono-sum 최악 대역 −2.82 → −1.88 dB |
 | 20 | 값 표시 단위 | 안 | % · Hz · dB · ° (Phase) · Wow/Flutter/Space Chorus는 "% (최대 ct)" · Tone은 Dark/Flat/Bright · Ecc는 "e 0.30" · Horizon은 "r 0.20" · Sync가 켜지면 Rate 칸에 "Sync 1/4" 표시. ms 단위 파라미터는 없음 |
+| 21 | 출력 레벨 (LevelMatch) | 없음. Mix는 등전력(cos/sin) 크로스페이드 | 등전력 Mix는 dry와 상관된 wet(짧은 지연의 저역, √n 보이스 합, 피드백 누적, Bloom 확산)에서 레벨이 올라 기본값에서도 +0.3~1.6 LU, 핑크 노이즈 RMS +1.3~3 dB가 됐다. Mix 뒤에 자동 레벨 매칭을 넣었다. 입력과 출력의 K-가중(BS.1770) 파워를 400 ms로 추적하고, 게인 sqrt(Pin/Pout)를 1.5 s로 글라이드한다(범위 −6~+1.5 dB). 입력이 −60 dB 아래면 학습을 멈춰 꼬리는 마지막 게인을 유지한다. Mix 0%면 게인은 1이다. Output 노브는 그 뒤에 곱한다. 회귀 테스트: 기본값과 7개 프리셋 × 핑크/드럼/패드, 통합 LUFS가 dry 대비 ±0.5 LU 이내 |
 | 18 | 비주얼 | 6.2 | 오디오 텔레메트리(px, py, bh, d, g, cents, wowHz, bloom, theta)로 구동: 별빛 렌즈 효과, 얇고 기울어진 따뜻한 강착원반과 휘어진 윗호, 포톤 링, 빨려 들어가는 먼지(g, bloom에 비례), 중력 쪽으로 늘어나는 행성 꼬리와 조석 변형, 보이스 수 = 위성 수. 네온 없음 |
 
 ### 테스트 기준 (v0.2에서 확정, 결과는 `tests/last_results.txt`)

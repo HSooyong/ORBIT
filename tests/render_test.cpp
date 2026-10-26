@@ -1,4 +1,5 @@
 // Offline render tests for ORBIT · Gravity Warp engine (no JUCE).
+#include "level_match.h"
 #include "engine/WarpEngine.h"
 #include "engine/Presets.h"
 #include <cstdio>
@@ -257,6 +258,13 @@ int main (int argc, char** argv)
         writeWav (outDir + "/sweep_far_to_near.wav", oL, oR, sr);
         writeWav (outDir + "/dry_input.wav", in, in, sr);
         std::printf ("[INFO] renders written to %s\n", outDir.c_str());
+    }
+
+    // level match: default + 7 presets x {pink, drums, pad}, integrated LUFS within +/-0.5 LU of dry
+    {
+        double worst = 0; const int over = levelmatch::run (false, worst);
+        char b[160]; std::snprintf (b, sizeof b, "level match vs dry: worst |dLUFS| %.2f LU over 24 cases (limit 0.5), %d over", worst, over);
+        check (over == 0, b);
     }
 
     std::printf ("\n%s (%d failure%s)\n", fails ? "SOME TESTS FAILED" : "ALL TESTS PASSED", fails, fails == 1 ? "" : "s");
