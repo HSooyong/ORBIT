@@ -1,0 +1,17 @@
+[PASS] silent input -> silence (8 settings x 10 s), peak = 0
+[PASS] zone far  (d=0.80): max |dev| =   3.52 cent, rms =  2.03 (expect 0.5..4.0)
+[PASS] zone mid  (d=0.40): max |dev| =   8.77 cent, rms =  4.36 (expect 5.0..25.0)
+[PASS] zone mid  (d=0.30): max |dev| =  18.74 cent, rms = 12.56 (expect 8.0..30.0)
+[PASS] zone near (d=0.15): max |dev| =  82.60 cent, rms = 45.25 (expect 50.0..100.0)
+[PASS] zone near (d=0.05): max |dev| =  94.55 cent, rms = 48.41 (expect 50.0..100.0)
+[PASS] cap: d=0, chaos 100%: max |dev| = 96.43 cent (expect <= 100)
+[PASS] Low Orbit far position: max |dev| = 3.10 cent (expect <= 4)
+[PASS] SR 44.1-192k, d=0.80: rms cent spread = 0.000 (target <= 0.5)
+[PASS] SR 44.1-192k, d=0.40: rms cent spread = 0.001 (target <= 0.5)
+[PASS] SR 44.1-192k, d=0.15: rms cent spread = 0.295 (target <= 0.5)
+[PASS] determinism across block sizes: max diff = 0
+[PASS] fixed seed: two runs bit-identical
+[PASS] feedback 70% stable: peak 1.62, last-second peak 6.2e-44
+[INFO] renders written to renders
+
+ALL TESTS PASSED (0 failures)
