@@ -32,7 +32,13 @@ struct Params
 
 struct HostInfo { bool hasBpm = false; double bpm = 120.0; bool playing = false; bool hasPpq = false; double ppq = 0.0; };
 
-struct Telemetry { float px = 0, py = 0, bhX = 0, bhY = 0, d = 1, g = 0, cents = 0, wowHz = 0, bloom = 0; float voiceCents[4] {}; float theta = 0; };
+struct Telemetry
+{
+    float px = 0, py = 0, bhX = 0, bhY = 0, d = 1, g = 0, cents = 0, wowHz = 0, bloom = 0;
+    float voiceCents[4] {};
+    float theta = 0;
+    float instantCents = 0; // voice 0 delay-slope pitch in cents; the sample loop does not read this
+};
 
 struct XorShift32
 {
@@ -383,6 +389,9 @@ private:
 
         tele = Telemetry { px, py, bhx, bhy, d, g, std::min (centsMax, kMaxCents), fWow, bloomS.v,
                            { tele.voiceCents[0], tele.voiceCents[1], tele.voiceCents[2], tele.voiceCents[3] }, (float) thetaS };
+        // Pitch ratio of a moving read head is 1 - d(delay)/d(sample). Report it; do not feed it back into the delay.
+        const float slope = dInc[0];
+        tele.instantCents = slope < 0.99f ? kCentsPerLn * std::log1p (-slope) : 0.0f;
         first = false;
     }
 

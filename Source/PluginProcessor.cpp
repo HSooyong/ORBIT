@@ -144,7 +144,7 @@ void OrbitAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::
     engine.process (inL, inR, outL, outR, n, readParams(), host);
 
     const auto& t = engine.telemetry();
-    visPx = t.px; visPy = t.py; visBhX = t.bhX; visBhY = t.bhY; visD = t.d; visG = t.g; visCents = t.cents; visBloom = t.bloom; visTheta = t.theta; visWowHz = t.wowHz;
+    visPx = t.px; visPy = t.py; visBhX = t.bhX; visBhY = t.bhY; visD = t.d; visG = t.g; visCents = t.cents; visBloom = t.bloom; visTheta = t.theta; visWowHz = t.wowHz; visInstantCents = t.instantCents;
 }
 
 juce::AudioProcessorEditor* OrbitAudioProcessor::createEditor()
@@ -154,6 +154,7 @@ juce::AudioProcessorEditor* OrbitAudioProcessor::createEditor()
 
 void OrbitAudioProcessor::getStateInformation (juce::MemoryBlock& dest)
 {
+    apvts.state.setProperty ("uiWidth", uiWidth.load(), nullptr);
     if (auto xml = apvts.copyState().createXml()) copyXmlToBinary (*xml, dest);
 }
 
@@ -161,7 +162,12 @@ void OrbitAudioProcessor::setStateInformation (const void* data, int size)
 {
     if (auto xml = getXmlFromBinary (data, size))
         if (xml->hasTagName (apvts.state.getType()))
-            apvts.replaceState (juce::ValueTree::fromXml (*xml));
+        {
+            auto tree = juce::ValueTree::fromXml (*xml);
+            const int width = (int) tree.getProperty ("uiWidth", orbit::ui::kDefaultWidth);
+            uiWidth.store (juce::jlimit (orbit::ui::kMinWidth, orbit::ui::kMaxWidth, width));
+            apvts.replaceState (tree);
+        }
 }
 
 juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter() { return new OrbitAudioProcessor(); }
