@@ -32,7 +32,7 @@ std::unique_ptr<juce::AudioParameterFloat> pct (int i, const char* name, float d
 OrbitAudioProcessor::OrbitAudioProcessor()
     : AudioProcessor (BusesProperties().withInput ("Input", juce::AudioChannelSet::stereo(), true)
                                        .withOutput ("Output", juce::AudioChannelSet::stereo(), true)),
-      apvts (*this, nullptr, "ORBIT_GW", createParameterLayout())
+      apvts (*this, &undo, "ORBIT_GW", createParameterLayout())
 {
     for (auto* id : kIds) raw.push_back (apvts.getRawParameterValue (id));
 }
@@ -145,6 +145,8 @@ void OrbitAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::
 
     const auto& t = engine.telemetry();
     visPx = t.px; visPy = t.py; visBhX = t.bhX; visBhY = t.bhY; visD = t.d; visG = t.g; visCents = t.cents; visBloom = t.bloom; visTheta = t.theta; visWowHz = t.wowHz; visInstantCents = t.instantCents;
+    visCWow = t.cWow; visCFlutter = t.cFlutter; visCChorus = t.cChorus; visFFlutter = t.fFlutter;
+    visLevelMatch = t.levelMatch; visInPower = t.inPower; visOutPower = t.outPower;
 }
 
 juce::AudioProcessorEditor* OrbitAudioProcessor::createEditor()
@@ -152,9 +154,47 @@ juce::AudioProcessorEditor* OrbitAudioProcessor::createEditor()
     return new OrbitEditor (*this);
 }
 
+OrbitAudioProcessor::UiFlags OrbitAudioProcessor::getUiFlags() const { return uiFlags; }
+
+void OrbitAudioProcessor::setUiFlags (UiFlags flags)
+{
+    flags.width = juce::jlimit (orbit::ui::kMinWidth, orbit::ui::kMaxWidth, flags.width);
+    uiFlags = flags;
+}
+
+void OrbitAudioProcessor::toggleAB()
+{
+    const auto now = apvts.copyState();
+    if (! slotBActive)
+    {
+        slotA = now.createCopy();
+        if (! slotB.isValid()) slotB = now.createCopy();
+        apvts.replaceState (slotB.createCopy());
+        slotBActive = true;
+    }
+    else
+    {
+        slotB = now.createCopy();
+        if (slotA.isValid()) apvts.replaceState (slotA.createCopy());
+        slotBActive = false;
+    }
+}
+
+void OrbitAudioProcessor::noteGesture (const juce::String& line)
+{
+    if (line.isEmpty()) return;
+    recent.insert (0, line);
+    while (recent.size() > 6) recent.remove (recent.size() - 1);
+}
+
 void OrbitAudioProcessor::getStateInformation (juce::MemoryBlock& dest)
 {
-    apvts.state.setProperty ("uiWidth", uiWidth.load(), nullptr);
+    apvts.state.setProperty ("uiWidth", uiFlags.width, nullptr);
+    apvts.state.setProperty ("uiLearn", uiFlags.learn, nullptr);
+    apvts.state.setProperty ("uiMeter", uiFlags.meter, nullptr);
+    apvts.state.setProperty ("uiAdvanced", uiFlags.advanced, nullptr);
+    apvts.state.setProperty ("uiZones", uiFlags.zones, nullptr);
+    apvts.state.setProperty ("uiSlotB", slotBActive, nullptr);
     if (auto xml = apvts.copyState().createXml()) copyXmlToBinary (*xml, dest);
 }
 
@@ -164,8 +204,14 @@ void OrbitAudioProcessor::setStateInformation (const void* data, int size)
         if (xml->hasTagName (apvts.state.getType()))
         {
             auto tree = juce::ValueTree::fromXml (*xml);
-            const int width = (int) tree.getProperty ("uiWidth", orbit::ui::kDefaultWidth);
-            uiWidth.store (juce::jlimit (orbit::ui::kMinWidth, orbit::ui::kMaxWidth, width));
+            UiFlags flags;
+            flags.width = juce::jlimit (orbit::ui::kMinWidth, orbit::ui::kMaxWidth, (int) tree.getProperty ("uiWidth", orbit::ui::kDefaultWidth));
+            flags.learn = (bool) tree.getProperty ("uiLearn", false);
+            flags.meter = (bool) tree.getProperty ("uiMeter", false);
+            flags.advanced = (bool) tree.getProperty ("uiAdvanced", false);
+            flags.zones = (bool) tree.getProperty ("uiZones", false);
+            slotBActive = (bool) tree.getProperty ("uiSlotB", false);
+            uiFlags = flags;
             apvts.replaceState (tree);
         }
 }

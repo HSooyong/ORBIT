@@ -27,8 +27,9 @@ add_executable(orbit_render_test tests/render_test.cpp)
 add_executable(orbit_loudness_test tests/loudness_test.cpp)
 add_executable(orbit_bloom_ab tests/bloom_ab.cpp)
 add_executable(orbit_bloom_zone_ab tests/bloom_zone_ab.cpp)
+add_executable(orbit_layout_test tests/layout_test.cpp)
 
-foreach(test_target orbit_render_test orbit_loudness_test orbit_bloom_ab orbit_bloom_zone_ab)
+foreach(test_target orbit_render_test orbit_loudness_test orbit_bloom_ab orbit_bloom_zone_ab orbit_layout_test)
     target_include_directories(${test_target} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/Source ${CMAKE_CURRENT_SOURCE_DIR}/tests)
     target_compile_features(${test_target} PRIVATE cxx_std_17)
 endforeach()
@@ -37,6 +38,7 @@ enable_testing()
 file(MAKE_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/renders)
 add_test(NAME engine COMMAND orbit_render_test ${CMAKE_CURRENT_BINARY_DIR}/renders)
 add_test(NAME loudness COMMAND orbit_loudness_test --check)
+add_test(NAME layout COMMAND orbit_layout_test)
 set_tests_properties(engine PROPERTIES TIMEOUT 900)
 set_tests_properties(loudness PROPERTIES TIMEOUT 600)
 
@@ -66,7 +68,7 @@ if(ORBIT_BUILD_PLUGIN)
         NEEDS_MIDI_INPUT FALSE
         NEEDS_MIDI_OUTPUT FALSE
         IS_MIDI_EFFECT FALSE
-        EDITOR_WANTS_KEYBOARD_FOCUS FALSE
+        EDITOR_WANTS_KEYBOARD_FOCUS TRUE
         COPY_PLUGIN_AFTER_BUILD FALSE
         NEEDS_CURL FALSE
         NEEDS_WEB_BROWSER FALSE
@@ -79,12 +81,17 @@ if(ORBIT_BUILD_PLUGIN)
 
     juce_generate_juce_header(ORBIT)
 
+    juce_add_binary_data(OrbitFonts
+        SOURCES
+            fonts/NotoSansKR-Regular.otf
+            fonts/DMSans-Regular.ttf
+            fonts/IBMPlexMono-Regular.ttf)
+
     target_sources(ORBIT
         PRIVATE
             Source/PluginProcessor.cpp
             Source/PluginEditor.cpp
-            Source/OrbitLookAndFeel.cpp
-            Source/GravityField.cpp)
+            Source/OrbitScene.cpp)
 
     target_include_directories(ORBIT PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/Source)
 
@@ -98,6 +105,7 @@ if(ORBIT_BUILD_PLUGIN)
 
     target_link_libraries(ORBIT
         PRIVATE
+            OrbitFonts
             juce::juce_audio_utils
             juce::juce_dsp
             juce::juce_recommended_config_flags
@@ -113,8 +121,7 @@ if(ORBIT_BUILD_PLUGIN)
             tests/gui_snapshot.cpp
             Source/PluginProcessor.cpp
             Source/PluginEditor.cpp
-            Source/OrbitLookAndFeel.cpp
-            Source/GravityField.cpp)
+            Source/OrbitScene.cpp)
     target_include_directories(orbit_gui_snapshot PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/Source)
     target_compile_definitions(orbit_gui_snapshot
         PRIVATE
@@ -127,6 +134,7 @@ if(ORBIT_BUILD_PLUGIN)
             JUCE_STANDALONE_APPLICATION=1)
     target_link_libraries(orbit_gui_snapshot
         PRIVATE
+            OrbitFonts
             juce::juce_audio_utils
             juce::juce_dsp
             juce::juce_recommended_config_flags
