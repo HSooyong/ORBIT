@@ -31,7 +31,7 @@
 ## 5. 패키징 / 코드사인 / 공증
 1. **P1** Apple Developer ID Application 인증서로 VST3와 AU에 서명한다(지금은 ad-hoc). hardened runtime과 timestamp를 켠다.
 2. **P1** notarytool로 공증하고 staple한다. Developer ID Installer로 서명한 .pkg 설치기(VST3/AU 선택 설치)를 만든다.
-3. **P1** 번들 버전, 제조사 코드, 플러그인 코드를 확정한다. 출시 뒤에는 바꾸지 않는다.
+3. **P1** 식별자를 확정했다. 회사 Bearfield, 제조사 코드 Brfd, 플러그인 코드 OrGw, 번들 com.bearfield.ORBIT, 제품 이름 ORBIT. 출시 뒤에는 바꾸지 않는다.
 4. **P2** Windows VST3 빌드와 Authenticode 서명, 설치기(Inno Setup).
 5. **P2** GitHub Actions로 macOS universal과 Windows 빌드를 자동화하고 아티팩트를 보관한다.
 6. **P3** AAX(PACE 서명 필요) 검토.

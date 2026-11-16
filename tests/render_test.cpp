@@ -1,5 +1,6 @@
 // Offline render tests for ORBIT · Gravity Warp engine (no JUCE).
 #include "level_match.h"
+#include "EditorLayout.h"
 #include "engine/WarpEngine.h"
 #include "engine/Presets.h"
 #include <cstdio>
@@ -137,6 +138,24 @@ int main (int argc, char** argv)
         auto st = zone (0, sr, &p);
         char b[128]; std::snprintf (b, sizeof b, "cap: d=0, chaos 100%%: max |dev| = %.2f cent (expect <= 100)", st.maxAbs);
         check (st.maxAbs <= 100.0f, b);
+    }
+    // voice 0 instantaneous pitch is observed from the delay slope and is not fed back into the audio path
+    {
+        const int n = sr; std::vector<float> in ((size_t) n), oL, oR;
+        for (int i = 0; i < n; ++i) in[(size_t) i] = 0.5f * (float) std::sin (kTwoPi * 1000.0 * i / sr);
+        WarpEngine e; e.prepare (sr); Params p = zoneParams (0.15f); HostInfo h;
+        oL.assign ((size_t) n, 0); oR.assign ((size_t) n, 0);
+        float lo = 1.0e9f, hi = -1.0e9f;
+        for (int s = 0; s < n; s += 256)
+        {
+            const int m = std::min (256, n - s);
+            e.process (in.data() + s, in.data() + s, oL.data() + s, oR.data() + s, m, p, h);
+            const float c = e.telemetry().instantCents;
+            lo = std::min (lo, c); hi = std::max (hi, c);
+        }
+        const float width = e.telemetry().cents;
+        char b[240]; std::snprintf (b, sizeof b, "instant pitch: %+.2f..%+.2f cent, width %.2f (finite, |instant|<=110, width<=100, moves)", lo, hi, width);
+        check (std::isfinite (lo) && std::isfinite (hi) && std::abs (lo) <= 110.0f && std::abs (hi) <= 110.0f && width <= 100.0f && width >= 0.0f && (hi - lo) > 0.5f, b);
     }
     // default preset (Low Orbit) wet-only, far zone
     {

@@ -1,193 +1,433 @@
 #include "PluginEditor.h"
+#include "EditorLayout.h"
 
-OrbitEditor::Knob* OrbitEditor::knob (const char* id, const char* label)
+namespace
 {
-    auto k = std::make_unique<Knob>();
-    k->s.setSliderStyle (juce::Slider::RotaryHorizontalVerticalDrag);
-    k->s.setTextBoxStyle (juce::Slider::TextBoxBelow, false, 84, 15);
-    k->s.setRotaryParameters (juce::degreesToRadians (225.0f), juce::degreesToRadians (495.0f), true);
-    k->s.setColour (juce::Slider::textBoxBackgroundColourId, juce::Colour (0xff0b0d10));
-    k->s.setColour (juce::Slider::textBoxOutlineColourId, juce::Colour (0xff23292f));
-    k->s.setColour (juce::Slider::textBoxTextColourId, OrbitLookAndFeel::text());
-    k->s.setTextValueSuffix ("");
-    k->l.setText (label, juce::dontSendNotification);
-    k->l.setJustificationType (juce::Justification::centred);
-    k->a = std::make_unique<SA> (proc.apvts, id, k->s); // attachment wraps drags in begin/endChangeGesture
-    addAndMakeVisible (k->s); addAndMakeVisible (k->l);
-    knobs.push_back (std::move (k));
-    return knobs.back().get();
-}
-
-OrbitEditor::Combo* OrbitEditor::combo (const char* id, const char* label)
+class ShellLookAndFeel : public juce::LookAndFeel_V4
 {
-    auto c = std::make_unique<Combo>();
-    if (auto* prm = dynamic_cast<juce::AudioParameterChoice*> (proc.apvts.getParameter (id)))
-        c->c.addItemList (prm->choices, 1);
-    c->l.setText (label, juce::dontSendNotification);
-    c->l.setJustificationType (juce::Justification::centredLeft);
-    c->a = std::make_unique<CA> (proc.apvts, id, c->c);
-    addAndMakeVisible (c->c); addAndMakeVisible (c->l);
-    combos.push_back (std::move (c));
-    return combos.back().get();
-}
-
-OrbitEditor::OrbitEditor (OrbitAudioProcessor& p) : AudioProcessorEditor (p), proc (p), field (p)
-{
-    setLookAndFeel (&lnf);
-    addAndMakeVisible (field);
-
-    left  = { knob ("rate", "RATE"), knob ("phase", "PHASE"), knob ("shape", "SHAPE"), knob ("ecc", "ECCENTRIC"),
-              knob ("radius", "ORBIT SIZE"), knob ("gravity", "GRAVITY") };
-    right = { knob ("warp", "WOW"), knob ("flutter", "FLUTTER"), knob ("chaos", "CHAOS"), knob ("width", "WIDTH"),
-              knob ("drive", "TAPE"), knob ("tone", "TONE"), knob ("mix", "MIX"), knob ("output", "OUTPUT") };
-    adv   = { knob ("horizon", "HORIZON"), knob ("bloom", "H. BLOOM"), knob ("floor", "SPACE CHORUS"), knob ("feedback", "FEEDBACK"),
-              knob ("bh_x", "HOLE X"), knob ("bh_y", "HOLE Y") };
-    sync = combo ("sync", "SYNC");
+public:
+    ShellLookAndFeel()
     {
-        auto* rateK = left[0];
-        auto* syncP = proc.apvts.getParameter ("sync");
-        auto* rateP = proc.apvts.getParameter ("rate");
-        rateK->s.textFromValueFunction = [syncP, rateP] (double v) {
-            const int si = juce::roundToInt (syncP->convertFrom0to1 (syncP->getValue()));
-            if (si > 0) return "Sync " + syncP->getCurrentValueAsText();
-            return rateP->getText (rateP->convertTo0to1 ((float) v), 0); };
-        rateK->s.updateText();
-        sync->c.onChange = [rateK] { rateK->s.updateText(); };
-    } stages = combo ("stages", "STAGES"); voices = combo ("voices", "VOICES");
-
-    for (int i = 0; i < proc.getNumPrograms(); ++i) presetBox.addItem (proc.getProgramName (i), i + 1);
-    presetBox.setSelectedId (proc.getCurrentProgram() + 1, juce::dontSendNotification);
-    presetBox.onChange = [this] { proc.setCurrentProgram (presetBox.getSelectedId() - 1); };
-    prevBtn.onClick = [this] { presetBox.setSelectedId ((presetBox.getSelectedId() + 5) % 7 + 1); };
-    nextBtn.onClick = [this] { presetBox.setSelectedId (presetBox.getSelectedId() % 7 + 1); };
-    for (auto* b : { &holdBtn, &keplerBtn }) b->setClickingTogglesState (true);
-    holdAtt = std::make_unique<BA> (proc.apvts, "hold", holdBtn);
-    keplerAtt = std::make_unique<BA> (proc.apvts, "kepler", keplerBtn);
-    advBtn.setClickingTogglesState (true);
-    advBtn.onClick = [this] { setAdvancedOpen (advBtn.getToggleState()); };
-    for (auto* c : { (juce::Component*) &presetBox, (juce::Component*) &prevBtn, (juce::Component*) &nextBtn,
-                     (juce::Component*) &holdBtn, (juce::Component*) &keplerBtn, (juce::Component*) &advBtn })
-        addAndMakeVisible (c);
-
-    setSize (920, 640);
-    setAdvancedOpen (false);
-}
-
-OrbitEditor::~OrbitEditor() { setLookAndFeel (nullptr); }
-
-void OrbitEditor::setAdvancedOpen (bool open)
-{
-    advOpen = open;
-    advBtn.setToggleState (open, juce::dontSendNotification);
-    for (auto* k : adv) { k->s.setVisible (open); k->l.setVisible (open); }
-    keplerBtn.setVisible (open); voices->c.setVisible (open); voices->l.setVisible (open);
-    resized(); repaint();
-}
-
-void OrbitEditor::layoutKnobs (std::vector<Knob*>& ks, juce::Rectangle<int> area, int cols)
-{
-    const int rows = ((int) ks.size() + cols - 1) / cols;
-    const int cw = area.getWidth() / cols, rh = area.getHeight() / juce::jmax (1, rows);
-    for (size_t i = 0; i < ks.size(); ++i)
-    {
-        auto cell = juce::Rectangle<int> (area.getX() + (int) (i % (size_t) cols) * cw, area.getY() + (int) (i / (size_t) cols) * rh, cw, rh).reduced (4, 2);
-        ks[i]->l.setBounds (cell.removeFromTop (14));
-        ks[i]->s.setBounds (cell);
+        setColour(juce::Slider::textBoxTextColourId, juce::Colour(0xfff4f1ea));
+        setColour(juce::Slider::textBoxOutlineColourId, juce::Colours::transparentBlack);
+        setColour(juce::Slider::textBoxBackgroundColourId, juce::Colours::transparentBlack);
+        setColour(juce::Label::textColourId, juce::Colour(0xfff4f1ea));
+        setColour(juce::TextButton::textColourOffId, juce::Colour(0xfff4f1ea));
     }
+
+    void drawRotarySlider(juce::Graphics& g, int x, int y, int width, int height, float sliderPos,
+                          float rotaryStartAngle, float rotaryEndAngle, juce::Slider&) override
+    {
+        auto bounds = juce::Rectangle<float>((float) x, (float) y, (float) width, (float) height).reduced(4.0f);
+        const float size = juce::jmin(bounds.getWidth(), bounds.getHeight());
+        bounds = bounds.withSizeKeepingCentre(size, size);
+        const auto centre = bounds.getCentre();
+        const float radius = size * 0.5f;
+        const float thickness = juce::jmax(1.6f, size * 0.045f);
+        const float angle = rotaryStartAngle + sliderPos * (rotaryEndAngle - rotaryStartAngle);
+        const float arcR = radius - thickness;
+
+        g.setColour(juce::Colour(0xff2a3140));
+        juce::Path track;
+        track.addCentredArc(centre.x, centre.y, arcR, arcR, 0.0f, rotaryStartAngle, rotaryEndAngle, true);
+        g.strokePath(track, juce::PathStrokeType(thickness, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+
+        g.setColour(juce::Colour(0xffe6e1d6));
+        juce::Path value;
+        value.addCentredArc(centre.x, centre.y, arcR, arcR, 0.0f, rotaryStartAngle, angle, true);
+        g.strokePath(value, juce::PathStrokeType(thickness, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+
+        juce::Path needle;
+        const float len = radius * 0.55f;
+        needle.startNewSubPath(centre);
+        needle.lineTo(centre.x + len * std::sin(angle), centre.y - len * std::cos(angle));
+        g.strokePath(needle, juce::PathStrokeType(juce::jmax(1.2f, thickness * 0.45f), juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+    }
+
+    void drawButtonBackground(juce::Graphics& g, juce::Button& button, const juce::Colour&, bool over, bool down) override
+    {
+        auto r = button.getLocalBounds().toFloat().reduced(0.5f);
+        g.setColour(juce::Colour(down ? 0xff2c3344 : over ? 0xff222836 : 0xff161b24));
+        g.fillRoundedRectangle(r, 6.0f);
+        g.setColour(juce::Colour(0xff343c4c));
+        g.drawRoundedRectangle(r, 6.0f, 1.0f);
+    }
+};
+
+juce::Point<float> fieldToScreen(float x, float y, juce::Rectangle<float> area)
+{
+    const auto centre = area.getCentre();
+    const float scale = juce::jmin(area.getWidth(), area.getHeight()) * 0.34f;
+    return { centre.x + x * scale, centre.y - y * scale };
+}
+
+void strokeZoneCircle(juce::Graphics& g, juce::Point<float> centre, float radius, juce::Colour colour)
+{
+    juce::Path path;
+    constexpr int kSteps = 48;
+    for (int i = 0; i < kSteps; i += 2)
+    {
+        const float a0 = juce::MathConstants<float>::twoPi * (float) i / (float) kSteps;
+        const float a1 = juce::MathConstants<float>::twoPi * (float) (i + 1) / (float) kSteps;
+        path.startNewSubPath(centre.x + radius * std::cos(a0), centre.y - radius * std::sin(a0));
+        path.lineTo(centre.x + radius * std::cos(a1), centre.y - radius * std::sin(a1));
+    }
+    g.setColour(colour.withAlpha(0.45f));
+    g.strokePath(path, juce::PathStrokeType(1.0f));
+}
+
+void drawPill(juce::Graphics& g, juce::Rectangle<float> r, const juce::String& korean, const juce::String& english, bool on)
+{
+    g.setColour(on ? juce::Colour(0xffd5e4f8) : juce::Colour(0xff171c26));
+    g.fillRoundedRectangle(r, r.getHeight() * 0.45f);
+    g.setColour(on ? juce::Colour(0xff10141c) : juce::Colour(0xffc8d0dc));
+    g.setFont(juce::Font(juce::FontOptions(12.0f)));
+    const float koreanWidth = (float) korean.length() * 12.0f;
+    auto text = r.reduced(10.0f, 0.0f);
+    g.drawFittedText(korean, text.removeFromLeft(koreanWidth).toNearestInt(), juce::Justification::centredLeft, 1);
+    g.setColour(on ? juce::Colour(0xff3c4658) : juce::Colour(0xff8b93a3));
+    g.setFont(juce::Font(juce::FontOptions(9.0f)));
+    g.drawFittedText(english, text.toNearestInt(), juce::Justification::centredLeft, 1);
+}
+} // namespace
+
+OrbitEditor::OrbitEditor(OrbitAudioProcessor& p) : juce::AudioProcessorEditor(p), proc(p)
+{
+    setOpaque(true);
+    setName("ORBIT");
+    lnf = std::make_unique<ShellLookAndFeel>();
+    setLookAndFeel(lnf.get());
+
+    makeKnob(gravity, "gravity", juce::String::fromUTF8("중력"), "GRAVITY", juce::String::fromUTF8("블랙홀의 질량"));
+    makeKnob(rate, "rate", juce::String::fromUTF8("속도"), "RATE", juce::String::fromUTF8("한 바퀴 도는 빠르기"));
+    makeKnob(mix, "mix", juce::String::fromUTF8("믹스"), "MIX", juce::String::fromUTF8("원음과 흔들린 소리의 비율"));
+
+    prev.onClick = [this]
+    {
+        const int n = proc.getNumPrograms();
+        proc.setCurrentProgram((proc.getCurrentProgram() + n - 1) % n);
+        repaint();
+    };
+    next.onClick = [this]
+    {
+        const int n = proc.getNumPrograms();
+        proc.setCurrentProgram((proc.getCurrentProgram() + 1) % n);
+        repaint();
+    };
+    addAndMakeVisible(prev);
+    addAndMakeVisible(next);
+
+    juce::Random rng(20261116);
+    stars.resize(90);
+    for (auto& s : stars)
+    {
+        s.x = rng.nextFloat();
+        s.y = rng.nextFloat();
+        s.a = 0.12f + 0.45f * rng.nextFloat();
+    }
+
+    // setResizeLimits applies the constrainer to the still-empty bounds. Ignore that pass.
+    suppressResize = true;
+    setResizable(true, true);
+    setResizeLimits(orbit::ui::kMinWidth, orbit::ui::heightForWidth(orbit::ui::kMinWidth),
+                    orbit::ui::kMaxWidth, orbit::ui::heightForWidth(orbit::ui::kMaxWidth));
+    if (auto* boundsLock = getConstrainer())
+        boundsLock->setFixedAspectRatio((double) orbit::ui::kDefaultWidth / (double) orbit::ui::kDesignHeight);
+    suppressResize = false;
+
+    const int width = juce::jlimit(orbit::ui::kMinWidth, orbit::ui::kMaxWidth, proc.getUiWidth());
+    setSize(width, orbit::ui::heightForWidth(width));
+    startTimerHz(orbit::ui::kIdleTimerHz);
+}
+
+OrbitEditor::~OrbitEditor()
+{
+    stopTimer();
+    setLookAndFeel(nullptr);
+}
+
+void OrbitEditor::makeKnob(Knob& knob, const char* id, const juce::String& korean, const juce::String& english, const juce::String& hint)
+{
+    knob.title.setText(korean, juce::dontSendNotification);
+    knob.sub.setText(english, juce::dontSendNotification);
+    knob.hint.setText(hint, juce::dontSendNotification);
+    for (auto* label : { &knob.title, &knob.sub, &knob.hint })
+    {
+        label->setJustificationType(juce::Justification::centred);
+        label->setInterceptsMouseClicks(false, false);
+        addAndMakeVisible(label);
+    }
+    knob.title.setFont(juce::Font(juce::FontOptions(13.0f)));
+    knob.title.setColour(juce::Label::textColourId, juce::Colour(0xfff4f1ea));
+    knob.sub.setFont(juce::Font(juce::FontOptions(9.0f)));
+    knob.sub.setColour(juce::Label::textColourId, juce::Colour(0xff8b93a3));
+    knob.hint.setFont(juce::Font(juce::FontOptions(11.0f)));
+    knob.hint.setColour(juce::Label::textColourId, juce::Colour(0xffa7b0c0));
+    knob.hint.setMinimumHorizontalScale(0.6f);
+
+    knob.slider.setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag);
+    knob.slider.setTextBoxStyle(juce::Slider::TextBoxBelow, false, 88, 16);
+    knob.slider.setRotaryParameters(juce::MathConstants<float>::pi * 1.25f, juce::MathConstants<float>::pi * 2.75f, true);
+    knob.attachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(proc.apvts, id, knob.slider);
+    addAndMakeVisible(knob.slider);
+}
+
+void OrbitEditor::placeKnob(Knob& knob, juce::Rectangle<int> cell) const
+{
+    const int titleH = juce::jmax(14, cell.getHeight() / 8);
+    const int subH = juce::jmax(12, cell.getHeight() / 10);
+    const int hintH = juce::jmax(16, cell.getHeight() / 7);
+    knob.title.setBounds(cell.removeFromTop(titleH));
+    knob.sub.setBounds(cell.removeFromTop(subH));
+    knob.hint.setBounds(cell.removeFromBottom(hintH));
+    knob.slider.setBounds(cell.reduced(2, 0));
+}
+
+int OrbitEditor::sx(int design) const
+{
+    return juce::roundToInt((float) design * (float) getWidth() / (float) orbit::ui::kDefaultWidth);
 }
 
 void OrbitEditor::resized()
 {
-    auto r = getLocalBounds();
-    header = r.removeFromTop (52);
-    r.reduce (10, 0); r.removeFromBottom (10);
-    auto bar = r.removeFromBottom (24);
-    advBtn.setBounds (bar.withSizeKeepingCentre (120, 20));
-    r.removeFromBottom (6);
-    if (advOpen) { advPanel = r.removeFromBottom (128); r.removeFromBottom (8); } else advPanel = {};
+    if (suppressResize)
+        return;
 
-    leftPanel = r.removeFromLeft (184); r.removeFromLeft (8);
-    rightPanel = r.removeFromRight (184); r.removeFromRight (8);
-    field.setBounds (r);
+    const int width = getWidth();
+    if (width >= orbit::ui::kMinWidth && width <= orbit::ui::kMaxWidth)
+        proc.setUiWidth(width);
 
-    auto h = header.reduced (14, 12);
-    auto mid = h.withSizeKeepingCentre (290, 26);
-    prevBtn.setBounds (mid.removeFromLeft (26)); nextBtn.setBounds (mid.removeFromRight (26));
-    presetBox.setBounds (mid.reduced (4, 0));
-    holdBtn.setBounds (h.removeFromRight (70).withSizeKeepingCentre (70, 26));
+    const int cluster = sx(222);
+    const int clusterX = (getWidth() - cluster) / 2;
+    prev.setBounds(clusterX, sx(14), sx(28), sx(28));
+    next.setBounds(clusterX + cluster - sx(28), sx(14), sx(28), sx(28));
 
-    auto lp = leftPanel.reduced (6, 26);
-    auto lc = lp.removeFromBottom (68);
-    sync->l.setBounds (lc.removeFromTop (14).withTrimmedLeft (6)); sync->c.setBounds (lc.removeFromTop (22).reduced (6, 0));
-    lc.removeFromTop (4);
-    stages->l.setBounds (lc.removeFromTop (0)); // label drawn inline below
-    auto lc2 = lc; stages->c.setBounds (lc2.removeFromTop (22).reduced (6, 0).withTrimmedLeft (60)); stages->l.setBounds (lc.removeFromTop (22).withTrimmedLeft (6).withWidth (60));
-    layoutKnobs (left, lp, 2);
+    const int colX = getWidth() - sx(orbit::ui::kRightMargin + orbit::ui::kRightWidth);
+    const int colW = sx(orbit::ui::kRightWidth);
+    const int top = sx(orbit::ui::kHeaderHeight + 16);
+    const int gap = sx(8);
+    const int h = juce::jmax(40, (getHeight() - top - sx(18) - 2 * gap) / 3);
+    placeKnob(gravity, { colX, top, colW, h });
+    placeKnob(rate, { colX, top + h + gap, colW, h });
+    placeKnob(mix, { colX, top + 2 * (h + gap), colW, h });
+}
 
-    auto rp = rightPanel.reduced (6, 26);
-    layoutKnobs (right, rp, 2);
+void OrbitEditor::timerCallback()
+{
+    const float theta = proc.visTheta.load();
+    const bool moving = std::abs(theta - lastTheta) > 1.0e-5f;
+    lastTheta = theta;
+    const int hz = moving ? orbit::ui::kActiveTimerHz : orbit::ui::kIdleTimerHz;
+    if (std::abs(getTimerInterval() - (1000 / hz)) > 2)
+        startTimerHz(hz);
+    repaint();
+}
 
-    if (advOpen)
+void OrbitEditor::paint(juce::Graphics& g)
+{
+    paintBackdrop(g);
+
+    const auto scene = juce::Rectangle<float>((float) sx(orbit::ui::kSceneX),
+                                               (float) sx(orbit::ui::kHeaderHeight),
+                                               (float) getWidth() - (float) sx(orbit::ui::kSceneX + orbit::ui::kRightMargin + orbit::ui::kRightWidth + 8),
+                                               (float) getHeight() - (float) sx(orbit::ui::kHeaderHeight + 28));
+    paintScene(g, scene);
+
+    const auto readout = juce::Rectangle<float>((float) sx(orbit::ui::kLeftX),
+                                                 (float) sx(orbit::ui::kHeaderHeight + 16),
+                                                 (float) sx(orbit::ui::kLeftWidth),
+                                                 (float) getHeight() - (float) sx(orbit::ui::kHeaderHeight + 40));
+    paintReadout(g, readout);
+    paintChrome(g);
+}
+
+void OrbitEditor::paintBackdrop(juce::Graphics& g) const
+{
+    g.fillAll(juce::Colour(0xff07090d));
+    for (const auto& s : stars)
     {
-        auto a = advPanel.reduced (10, 0).withTrimmedTop (24).withTrimmedBottom (4);
-        auto tail = a.removeFromRight (150);
-        layoutKnobs (adv, a, (int) adv.size());
-        voices->l.setBounds (tail.removeFromTop (14)); voices->c.setBounds (tail.removeFromTop (22).reduced (0, 0));
-        tail.removeFromTop (10); keplerBtn.setBounds (tail.removeFromTop (24));
+        g.setColour(juce::Colours::white.withAlpha(s.a));
+        g.fillEllipse(s.x * (float) getWidth(), s.y * (float) getHeight(), 1.4f, 1.4f);
     }
 }
 
-static void drawPanel (juce::Graphics& g, juce::Rectangle<int> r, const juce::String& title)
+void OrbitEditor::paintScene(juce::Graphics& g, juce::Rectangle<float> area) const
 {
-    if (r.isEmpty()) return;
-    auto f = r.toFloat();
-    juce::ColourGradient grad (juce::Colour (0xff1c2128), f.getX(), f.getY(), juce::Colour (0xff111419), f.getX(), f.getBottom(), false);
-    g.setGradientFill (grad); g.fillRoundedRectangle (f, 5.0f);
-    g.setColour (juce::Colours::black.withAlpha (0.6f)); g.drawRoundedRectangle (f.translated (0, 1), 5.0f, 1.0f);
-    g.setColour (juce::Colour (0xff2f363f)); g.drawRoundedRectangle (f.reduced (0.5f), 5.0f, 1.0f);
-    g.setColour (OrbitLookAndFeel::muted());
-    g.setFont (juce::Font (juce::FontOptions (10.5f, juce::Font::bold)).withExtraKerningFactor (0.25f));
-    g.drawText (title, r.reduced (10, 6).removeFromTop (12), juce::Justification::centredLeft);
-    g.setColour (juce::Colour (0xff2a3038)); g.drawHorizontalLine (r.getY() + 21, (float) r.getX() + 10, (float) r.getRight() - 10);
+    if (area.getWidth() < 20.0f || area.getHeight() < 20.0f)
+        return;
+
+    const float bhX = proc.visBhX.load();
+    const float bhY = proc.visBhY.load();
+    const float px = proc.visPx.load();
+    const float py = proc.visPy.load();
+    const float radius = proc.apvts.getRawParameterValue("radius")->load();
+    const float ecc = proc.apvts.getRawParameterValue("ecc")->load();
+    const auto bh = fieldToScreen(bhX, bhY, area);
+    const float unit = juce::jmin(area.getWidth(), area.getHeight()) * 0.34f;
+
+    const float zoneEdge[2] = { orbit::ui::kNearEdge, orbit::ui::kFarEdge };
+    for (int zone = 0; zone < 2; ++zone)
+        strokeZoneCircle(g, bh, unit * zoneEdge[zone] * 2.0f, juce::Colour(orbit::ui::zoneColour(zone)));
+
+    constexpr int kSteps = 96;
+    for (int i = 0; i < kSteps; ++i)
+    {
+        const float t0 = (float) i / (float) kSteps;
+        const float t1 = (float) (i + 1) / (float) kSteps;
+        const float x0 = radius * std::cos(juce::MathConstants<float>::twoPi * t0);
+        const float y0 = radius * (1.0f - ecc) * std::sin(juce::MathConstants<float>::twoPi * t0);
+        const float x1 = radius * std::cos(juce::MathConstants<float>::twoPi * t1);
+        const float y1 = radius * (1.0f - ecc) * std::sin(juce::MathConstants<float>::twoPi * t1);
+        const float d = std::hypot(x0 - bhX, y0 - bhY) * 0.5f;
+        const auto p0 = fieldToScreen(x0, y0, area);
+        const auto p1 = fieldToScreen(x1, y1, area);
+        g.setColour(juce::Colour(orbit::ui::zoneColour(orbit::ui::zoneIndex(d))));
+        g.drawLine(p0.x, p0.y, p1.x, p1.y, 1.7f);
+    }
+
+    const float hole = juce::jmax(8.0f, unit * 0.08f);
+    g.setColour(juce::Colour(0xffc6a15a).withAlpha(0.85f));
+    g.drawEllipse(bh.x - hole * 1.85f, bh.y - hole * 0.42f, hole * 3.7f, hole * 0.84f, 1.2f);
+    g.setColour(juce::Colours::black);
+    g.fillEllipse(bh.x - hole, bh.y - hole, hole * 2.0f, hole * 2.0f);
+    g.setColour(juce::Colour(0xffe8d7a4).withAlpha(0.7f));
+    g.drawEllipse(bh.x - hole * 1.15f, bh.y - hole * 1.15f, hole * 2.3f, hole * 2.3f, 1.0f);
+
+    const auto planet = fieldToScreen(px, py, area);
+    const float pr = juce::jmax(4.0f, unit * 0.035f);
+    g.setColour(juce::Colour(0xffd5dde6));
+    g.fillEllipse(planet.x - pr, planet.y - pr, pr * 2.0f, pr * 2.0f);
 }
 
-void OrbitEditor::paint (juce::Graphics& g)
+void OrbitEditor::paintReadout(juce::Graphics& g, juce::Rectangle<float> column) const
 {
-    // brushed-metal chassis
-    g.fillAll (juce::Colour (0xff15181d));
-    juce::Random rn (5);
-    for (int y = 0; y < getHeight(); y += 2)
-    {
-        g.setColour (juce::Colours::white.withAlpha (0.008f + 0.012f * rn.nextFloat()));
-        g.drawHorizontalLine (y, 0.0f, (float) getWidth());
-    }
-    // header bezel
-    auto hb = header.toFloat();
-    juce::ColourGradient hg (juce::Colour (0xff2b323b), 0, hb.getY(), juce::Colour (0xff171b20), 0, hb.getBottom(), false);
-    g.setGradientFill (hg); g.fillRect (hb);
-    g.setColour (juce::Colours::black); g.drawHorizontalLine (header.getBottom() - 1, 0, (float) getWidth());
-    g.setColour (juce::Colours::white.withAlpha (0.07f)); g.drawHorizontalLine (0, 0, (float) getWidth());
-    // screws
-    for (auto pt : { juce::Point<float> (8, 8), juce::Point<float> ((float) getWidth() - 8, 8), juce::Point<float> (8, (float) getHeight() - 8), juce::Point<float> ((float) getWidth() - 8, (float) getHeight() - 8) })
-    {
-        g.setColour (juce::Colour (0xff3a424c)); g.fillEllipse (pt.x - 3.5f, pt.y - 3.5f, 7, 7);
-        g.setColour (juce::Colour (0xff12151a)); g.drawLine (pt.x - 2, pt.y, pt.x + 2, pt.y, 1.0f);
-    }
-    g.setColour (OrbitLookAndFeel::text());
-    g.setFont (juce::Font (juce::FontOptions (22.0f, juce::Font::bold)).withExtraKerningFactor (0.35f));
-    g.drawText ("ORBIT", 22, 10, 120, 32, juce::Justification::centredLeft);
-    g.setColour (OrbitLookAndFeel::muted());
-    g.setFont (juce::Font (juce::FontOptions (11.0f, juce::Font::bold)).withExtraKerningFactor (0.3f));
-    g.drawText ("GRAVITY WARP", 126, 10, 140, 32, juce::Justification::centredLeft);
-    g.setFont (juce::Font (juce::FontOptions (10.0f)));
-    g.drawText ("PLUGIN LAB", getWidth() - 200, 10, 100, 32, juce::Justification::centredRight);
+    g.setColour(juce::Colour(0xcc10141b));
+    g.fillRoundedRectangle(column, 12.0f);
 
-    drawPanel (g, leftPanel, "ORBIT / MOTION");
-    drawPanel (g, rightPanel, "SOUND CHARACTER");
-    drawPanel (g, advPanel, "ADVANCED");
+    const float distance = proc.visD.load();
+    const float cents = proc.visCents.load();
+    const int zone = orbit::ui::zoneIndex(distance);
+    const juce::Colour zoneTint(orbit::ui::zoneColour(zone));
+    const juce::String zoneKorean[3] = { juce::String::fromUTF8("근접"), juce::String::fromUTF8("중거리"), juce::String::fromUTF8("원거리") };
+    const juce::String zoneEnglish[3] = { "EVENT HORIZON", "DRIFT", "CLEAR SPACE" };
 
-    // frame around the field (metal bezel)
-    auto fr = field.getBounds().toFloat().expanded (3.0f);
-    juce::ColourGradient fg (juce::Colour (0xff3a424c), 0, fr.getY(), juce::Colour (0xff0e1114), 0, fr.getBottom(), false);
-    g.setGradientFill (fg); g.drawRoundedRectangle (fr, 4.0f, 3.0f);
+    auto row = column.reduced(14.0f, 16.0f);
+    g.setColour(juce::Colour(0xfff4f1ea));
+    g.setFont(juce::Font(juce::FontOptions(13.0f)));
+    g.drawFittedText(juce::String::fromUTF8("피치 흔들림"), row.removeFromTop(16.0f).toNearestInt(), juce::Justification::centredLeft, 1);
+    g.setColour(juce::Colour(0xff8b93a3));
+    g.setFont(juce::Font(juce::FontOptions(9.0f)));
+    g.drawFittedText("PITCH WOBBLE", row.removeFromTop(12.0f).toNearestInt(), juce::Justification::centredLeft, 1);
+
+    row.removeFromTop(6.0f);
+    auto numberRow = row.removeFromTop(juce::jmax(36.0f, column.getHeight() * 0.16f));
+    g.setColour(juce::Colour(0xfff7f4ee));
+    g.setFont(juce::Font(juce::FontOptions(juce::jmin(54.0f, numberRow.getHeight() * 0.92f))));
+    const auto number = juce::String::fromUTF8("\xC2\xB1") + juce::String(cents, 1);
+    g.drawFittedText(number, numberRow.removeFromLeft(numberRow.getWidth() * 0.72f).toNearestInt(), juce::Justification::centredLeft, 1);
+    g.setColour(juce::Colour(0xffc8d0dc));
+    g.setFont(juce::Font(juce::FontOptions(13.0f)));
+    g.drawFittedText(juce::String::fromUTF8("센트"), numberRow.toNearestInt(), juce::Justification::bottomLeft, 1);
+
+    row.removeFromTop(8.0f);
+    auto chip = row.removeFromTop(26.0f).withWidth(juce::jmin(row.getWidth(), 168.0f));
+    g.setColour(zoneTint.withAlpha(0.16f));
+    g.fillRoundedRectangle(chip, 11.0f);
+    g.setColour(zoneTint);
+    g.drawRoundedRectangle(chip, 11.0f, 1.0f);
+    auto chipText = chip.reduced(8.0f, 0.0f);
+    g.setFont(juce::Font(juce::FontOptions(12.0f)));
+    g.drawFittedText(zoneKorean[zone], chipText.removeFromLeft(52.0f).toNearestInt(), juce::Justification::centredLeft, 1);
+    g.setFont(juce::Font(juce::FontOptions(9.0f)));
+    g.drawFittedText(zoneEnglish[zone], chipText.toNearestInt(), juce::Justification::centredLeft, 1);
+
+    row.removeFromTop(18.0f);
+    auto label = row.removeFromTop(16.0f);
+    g.setColour(juce::Colour(0xffc8d0dc));
+    g.setFont(juce::Font(juce::FontOptions(11.0f)));
+    g.drawFittedText(juce::String::fromUTF8("블랙홀까지 거리"), label.removeFromLeft(label.getWidth() * 0.62f).toNearestInt(), juce::Justification::centredLeft, 1);
+    g.setColour(juce::Colour(0xfff4f1ea));
+    g.drawFittedText(juce::String(distance, 2), label.toNearestInt(), juce::Justification::centredRight, 1);
+
+    row.removeFromTop(8.0f);
+    auto bar = row.removeFromTop(6.0f);
+    auto fill = [&](float a, float b, juce::Colour colour)
+    {
+        g.setColour(colour);
+        g.fillRect(bar.getX() + bar.getWidth() * a, bar.getY(), bar.getWidth() * (b - a), bar.getHeight());
+    };
+    fill(0.0f, orbit::ui::kNearEdge, juce::Colour(orbit::ui::kNearColour));
+    fill(orbit::ui::kNearEdge, orbit::ui::kFarEdge, juce::Colour(orbit::ui::kMidColour));
+    fill(orbit::ui::kFarEdge, 1.0f, juce::Colour(orbit::ui::kFarColour));
+
+    const float marker = bar.getX() + bar.getWidth() * juce::jlimit(0.0f, 1.0f, distance);
+    juce::Path triangle;
+    triangle.addTriangle(marker, bar.getY() - 7.0f, marker - 4.5f, bar.getY() - 1.0f, marker + 4.5f, bar.getY() - 1.0f);
+    g.setColour(juce::Colour(0xfff4f1ea));
+    g.fillPath(triangle);
+
+    row.removeFromTop(6.0f);
+    auto ends = row.removeFromTop(14.0f);
+    g.setColour(juce::Colour(0xff8b93a3));
+    g.setFont(juce::Font(juce::FontOptions(10.0f)));
+    g.drawFittedText(juce::String::fromUTF8("가까움"), ends.removeFromLeft(ends.getWidth() * 0.5f).toNearestInt(), juce::Justification::centredLeft, 1);
+    g.drawFittedText(juce::String::fromUTF8("멀"), ends.toNearestInt(), juce::Justification::centredRight, 1);
+}
+
+void OrbitEditor::paintChrome(juce::Graphics& g) const
+{
+    const float headerH = (float) sx(orbit::ui::kHeaderHeight);
+    g.setColour(juce::Colour(0xf010131a));
+    g.fillRect(0.0f, 0.0f, (float) getWidth(), headerH);
+    g.setColour(juce::Colour(0xff2a3140));
+    g.drawHorizontalLine(sx(orbit::ui::kHeaderHeight) - 1, 0.0f, (float) getWidth());
+
+    g.setColour(juce::Colour(0xfff7f4ee));
+    g.setFont(juce::Font(juce::FontOptions(18.0f)));
+    g.drawFittedText("ORBIT", juce::Rectangle<int>(sx(22), sx(8), sx(120), sx(22)), juce::Justification::centredLeft, 1);
+    g.setColour(juce::Colour(0xff8b93a3));
+    g.setFont(juce::Font(juce::FontOptions(10.0f)));
+    g.drawFittedText("GRAVITY WARP  ·  BEARFIELD", juce::Rectangle<int>(sx(22), sx(30), sx(220), sx(16)), juce::Justification::centredLeft, 1);
+
+    const int cluster = sx(222);
+    const int clusterX = (getWidth() - cluster) / 2;
+    auto scene = juce::Rectangle<int>(clusterX + sx(32), sx(6), cluster - sx(64), sx(44));
+    g.setColour(juce::Colour(0xff8b93a3));
+    g.setFont(juce::Font(juce::FontOptions(9.0f)));
+    g.drawFittedText(juce::String::fromUTF8("장면"), scene.removeFromTop(sx(14)), juce::Justification::centred, 1);
+    g.setColour(juce::Colour(0xfff4f1ea));
+    g.setFont(juce::Font(juce::FontOptions(12.0f)));
+    g.drawFittedText(proc.getProgramName(proc.getCurrentProgram()), scene, juce::Justification::centred, 1);
+
+    float right = (float) getWidth() - (float) sx(16);
+    auto take = [&](int designWidth)
+    {
+        const float w = (float) sx(designWidth);
+        right -= w;
+        auto r = juce::Rectangle<float>(right, (float) sx(14), w, (float) sx(28));
+        right -= (float) sx(8);
+        return r;
+    };
+    drawPill(g, take(108), juce::String::fromUTF8("고급"), "ADVANCED", false);
+    drawPill(g, take(96), juce::String::fromUTF8("미터"), "METER", false);
+    drawPill(g, take(108), juce::String::fromUTF8("배우기"), "LEARN", false);
+
+    auto b = take(28);
+    auto a = take(28);
+    g.setColour(juce::Colour(0xff171c26));
+    g.fillRoundedRectangle(b, 6.0f);
+    g.setColour(juce::Colour(0xffd5e4f8));
+    g.fillRoundedRectangle(a, 6.0f);
+    g.setFont(juce::Font(juce::FontOptions(12.0f)));
+    g.setColour(juce::Colour(0xff10141c));
+    g.drawFittedText("A", a.toNearestInt(), juce::Justification::centred, 1);
+    g.setColour(juce::Colour(0xffc8d0dc));
+    g.drawFittedText("B", b.toNearestInt(), juce::Justification::centred, 1);
+
+    auto handle = juce::Rectangle<float>((float) getWidth() * 0.5f - (float) sx(36), (float) getHeight() - (float) sx(22), (float) sx(72), (float) sx(16));
+    g.setColour(juce::Colour(0xff171c26));
+    g.fillRoundedRectangle(handle, handle.getHeight() * 0.5f);
+    g.setColour(juce::Colour(0xffc8d0dc));
+    g.setFont(juce::Font(juce::FontOptions(10.0f)));
+    g.drawFittedText(juce::String::fromUTF8("\xE2\x96\xB2  미터"), handle.toNearestInt(), juce::Justification::centred, 1);
 }

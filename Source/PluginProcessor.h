@@ -1,5 +1,6 @@
 #pragma once
 #include <JuceHeader.h>
+#include "EditorLayout.h"
 #include "engine/WarpEngine.h"
 #include "engine/Presets.h"
 
@@ -36,10 +37,14 @@ public:
     static juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout();
     juce::AudioProcessorValueTreeState apvts;
 
-    // GUI telemetry (audio -> GUI), for the black-hole visual (M2 editor)
-    std::atomic<float> visPx { 0 }, visPy { 0 }, visBhX { 0 }, visBhY { 0 }, visD { 1 }, visG { 0 }, visCents { 0 }, visBloom { 0 }, visTheta { 0 }, visWowHz { 0 };
+    // GUI telemetry (audio -> GUI). instantCents is voice 0's delay-slope pitch; cents is the wobble width.
+    std::atomic<float> visPx { 0 }, visPy { 0 }, visBhX { 0 }, visBhY { 0 }, visD { 1 }, visG { 0 }, visCents { 0 }, visBloom { 0 }, visTheta { 0 }, visWowHz { 0 }, visInstantCents { 0 };
+
+    int getUiWidth() const { return uiWidth.load(); }
+    void setUiWidth (int width) { uiWidth.store (juce::jlimit (orbit::ui::kMinWidth, orbit::ui::kMaxWidth, width)); }
 
 private:
+    std::atomic<int> uiWidth { orbit::ui::kDefaultWidth };
     orbit::Params readParams() const;
     orbit::WarpEngine engine;
     int currentProgram = 0;
