@@ -34,17 +34,32 @@ public:
     void getStateInformation (juce::MemoryBlock&) override;
     void setStateInformation (const void*, int) override;
 
+    struct UiFlags
+    {
+        int width = orbit::ui::kDefaultWidth;
+        bool learn = false, meter = false, advanced = false, zones = false;
+    };
+
     static juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout();
+    juce::UndoManager undo;
     juce::AudioProcessorValueTreeState apvts;
 
-    // GUI telemetry (audio -> GUI). instantCents is voice 0's delay-slope pitch; cents is the wobble width.
+    // GUI telemetry. Depths and level-match are copied out; the sample loop does not read them back.
     std::atomic<float> visPx { 0 }, visPy { 0 }, visBhX { 0 }, visBhY { 0 }, visD { 1 }, visG { 0 }, visCents { 0 }, visBloom { 0 }, visTheta { 0 }, visWowHz { 0 }, visInstantCents { 0 };
+    std::atomic<float> visCWow { 0 }, visCFlutter { 0 }, visCChorus { 0 }, visFFlutter { 0 }, visLevelMatch { 1 }, visInPower { 0 }, visOutPower { 0 };
 
-    int getUiWidth() const { return uiWidth.load(); }
-    void setUiWidth (int width) { uiWidth.store (juce::jlimit (orbit::ui::kMinWidth, orbit::ui::kMaxWidth, width)); }
+    UiFlags getUiFlags() const;
+    void setUiFlags (UiFlags);
+    void toggleAB();
+    bool isSlotB() const { return slotBActive; }
+    void noteGesture (const juce::String& line);
+    juce::StringArray history() const { return recent; }
 
 private:
-    std::atomic<int> uiWidth { orbit::ui::kDefaultWidth };
+    juce::ValueTree slotA, slotB;
+    bool slotBActive = false;
+    juce::StringArray recent;
+    UiFlags uiFlags;
     orbit::Params readParams() const;
     orbit::WarpEngine engine;
     int currentProgram = 0;

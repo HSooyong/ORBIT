@@ -157,6 +157,18 @@ int main (int argc, char** argv)
         char b[240]; std::snprintf (b, sizeof b, "instant pitch: %+.2f..%+.2f cent, width %.2f (finite, |instant|<=110, width<=100, moves)", lo, hi, width);
         check (std::isfinite (lo) && std::isfinite (hi) && std::abs (lo) <= 110.0f && std::abs (hi) <= 110.0f && width <= 100.0f && width >= 0.0f && (hi - lo) > 0.5f, b);
     }
+    // shared education formula (Low Orbit defaults) — observation only, not a second engine
+    {
+        const auto mid = mapModulation (0.30f, 0.5f, 0.2f, 0.6f, 0.3f, 0.15f, 0.25f);
+        const auto near = mapModulation (0.10f, 0.5f, 0.2f, 0.6f, 0.3f, 0.15f, 0.25f);
+        const auto far = mapModulation (0.80f, 0.5f, 0.2f, 0.6f, 0.3f, 0.15f, 0.25f);
+        const float midSum = mid.cWow + mid.cFlutter + mid.cChorus;
+        const float nearSum = near.cWow + near.cFlutter + near.cChorus;
+        const float farSum = far.cWow + far.cFlutter + far.cChorus;
+        char b[200];
+        std::snprintf (b, sizeof b, "education formula Low Orbit: far %.2f mid %.2f near %.2f (expect 3.1 / 6.2 / 22.9)", farSum, midSum, nearSum);
+        check (std::abs (farSum - 3.1f) < 0.15f && std::abs (midSum - 6.2f) < 0.15f && std::abs (nearSum - 22.9f) < 0.2f, b);
+    }
     // default preset (Low Orbit) wet-only, far zone
     {
         Params p = factoryPresets()[0].p; p.mix = 1; p.voices = 1; p.hold = true; p.phase = 0.5f; // planet at (-0.7,0) far from BH

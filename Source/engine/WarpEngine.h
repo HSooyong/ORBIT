@@ -32,12 +32,60 @@ struct Params
 
 struct HostInfo { bool hasBpm = false; double bpm = 120.0; bool playing = false; bool hasPpq = false; double ppq = 0.0; };
 
+// Depth at one distance. Same arithmetic the audio control tick uses. Chaos only
+// changes the 88-cent scale; it does not add noise here.
+struct Modulation
+{
+    float g = 0, cWow = 0, cFlutter = 0, cChorus = 0, fWow = 0, fFlutter = 0, chaosAmt = 0;
+};
+
+inline Modulation mapModulation (float d, float gravity, float horizon, float warp, float flutter, float chorus, float chaos)
+{
+    const float rs = std::clamp (horizon, 0.05f, 0.5f);
+    const float dd = std::clamp (d, 0.0f, 1.0f);
+    const float g = std::clamp (gravity, 0.0f, 1.0f) / (1.0f + std::pow (dd / rs, 2.5f));
+    float cWow = std::clamp (warp, 0.0f, 1.0f) * 120.0f * std::pow (g, 1.5f);
+    const float chaosAmt = std::clamp (chaos, 0.0f, 1.0f) * std::pow (g, 1.5f);
+    float cFl = std::clamp (flutter, 0.0f, 1.0f) * 35.0f * g * g * g;
+    float cCh = 20.0f * std::clamp (chorus, 0.0f, 1.0f) * (0.3f + 0.7f * (1.0f - g));
+    const float est = cWow * (1.0f + 0.5f * chaosAmt) + cFl + cCh;
+    const float capT = 0.88f * kMaxCents;
+    const float sc = est > capT ? capT / est : 1.0f;
+    cWow *= sc; cFl *= sc; cCh *= sc;
+    return { g, cWow, cFl, cCh, 0.25f + 1.2f * g, 6.0f + 8.0f * g, chaosAmt };
+}
+
+inline void fillKepler (float eccentricity, double* cum, int bins)
+{
+    const double b = 1.0 - eccentricity;
+    cum[0] = 0.0;
+    for (int j = 0; j < bins; ++j)
+    {
+        const double th = (j + 0.5) / bins * kTwoPi;
+        const double rho = std::max (0.3, std::sqrt (std::cos (th) * std::cos (th) + b * b * std::sin (th) * std::sin (th)));
+        cum[j + 1] = cum[j] + rho * rho;
+    }
+    for (int j = 1; j <= bins; ++j) cum[j] /= cum[bins];
+}
+
+inline double keplerAngle (const double* cum, int bins, double uu)
+{
+    const double* it = std::upper_bound (cum, cum + bins + 1, uu);
+    int j = (int) (it - cum) - 1;
+    j = std::clamp (j, 0, bins - 1);
+    const double span = cum[j + 1] - cum[j];
+    const double fr = span > 0 ? (uu - cum[j]) / span : 0.0;
+    return (j + fr) / bins;
+}
+
 struct Telemetry
 {
     float px = 0, py = 0, bhX = 0, bhY = 0, d = 1, g = 0, cents = 0, wowHz = 0, bloom = 0;
     float voiceCents[4] {};
     float theta = 0;
-    float instantCents = 0; // voice 0 delay-slope pitch in cents; the sample loop does not read this
+    float instantCents = 0; // voice 0 delay-slope pitch; the sample loop does not read this
+    float cWow = 0, cFlutter = 0, cChorus = 0, fFlutter = 0;
+    float levelMatch = 1, inPower = 0, outPower = 0; // copied after the sample loop
 };
 
 struct XorShift32
@@ -223,6 +271,9 @@ public:
             if (outR) { outL[s] = ol; outR[s] = orr; }
             else outL[s] = 0.5f * (ol + orr);
         }
+        tele.levelMatch = lmG;
+        tele.inPower = pIn;
+        tele.outPower = pOut;
         first = false;
     }
 
@@ -249,27 +300,11 @@ private:
 
     void buildKepler (float e)
     {
-        // dt/dθ ∝ ρ(θ)^2 (equal-area-ish), normalised so one orbit keeps the Rate/Sync period
-        const double b = 1.0 - e;
-        cum[0] = 0.0;
-        for (int j = 0; j < kK; ++j)
-        {
-            const double th = (j + 0.5) / kK * kTwoPi;
-            const double rho = std::max (0.3, std::sqrt (std::cos (th) * std::cos (th) + b * b * std::sin (th) * std::sin (th)));
-            cum[j + 1] = cum[j] + rho * rho;
-        }
-        for (int j = 1; j <= kK; ++j) cum[j] /= cum[kK];
+        fillKepler (e, cum.data(), kK);
         keplerEcc = e;
     }
 
-    double keplerTheta (double uu) const // uniform time fraction -> angle (cycles)
-    {
-        const double* it = std::upper_bound (cum.data(), cum.data() + kK + 1, uu);
-        int j = (int) (it - cum.data()) - 1; j = std::clamp (j, 0, kK - 1);
-        const double span = cum[j + 1] - cum[j];
-        const double fr = span > 0 ? (uu - cum[j]) / span : 0.0;
-        return (j + fr) / kK;
-    }
+    double keplerTheta (double uu) const { return keplerAngle (cum.data(), kK, uu); }
 
     void controlTick (const Params& p, int nv, double rateHz, bool lockPpq, const HostInfo& host, double beats, int sOff,
                       float a30, float a40, float a20, float a5, float aSync)
@@ -310,25 +345,22 @@ private:
         const float px = R * (float) std::cos (th);
         const float py = R * (1.0f - e) * (float) std::sin (th);
 
-        // ---- GravityMapper
+        // ---- GravityMapper (mapModulation is the shared education-curve formula)
         const float d = std::clamp (std::hypot (px - bhx, py - bhy) / 2.0f, 0.0f, 1.0f);
         const float rs = std::clamp (horS.v, 0.05f, 0.5f);
-        const float g = std::clamp (gravS.v, 0.0f, 1.0f) / (1.0f + std::pow (d / rs, 2.5f));
+        const Modulation mapped = mapModulation (d, gravS.v, horS.v, warpS.v, flutS.v, floorS.v, chaosS.v);
+        const float g = mapped.g;
         const float bloomT = std::clamp (p.bloom, 0.0f, 1.0f) * std::clamp ((rs * 0.6f - d) / (rs * 0.3f), 0.0f, 1.0f);
         bloomS.step (bloomT, a30);
 
-        const float fWow = 0.25f + 1.2f * g;
-        float cWow = std::clamp (warpS.v, 0.0f, 1.0f) * 120.0f * std::pow (g, 1.5f);
-        const float chaosAmt = std::clamp (chaosS.v, 0.0f, 1.0f) * std::pow (g, 1.5f);
-        float cFl = std::clamp (flutS.v, 0.0f, 1.0f) * 35.0f * g * g * g;
-        float cCh = 20.0f * std::clamp (floorS.v, 0.0f, 1.0f) * (0.3f + 0.7f * (1.0f - g));
-        const float est = cWow * (1.0f + 0.5f * chaosAmt) + cFl + cCh;
-        const float capT = 0.88f * kMaxCents; // headroom for rate-mod / interpolation overshoot
-        const float sc = est > capT ? capT / est : 1.0f;
-        cWow *= sc; cFl *= sc; cCh *= sc;
+        const float fWow = mapped.fWow;
+        const float cWow = mapped.cWow;
+        const float chaosAmt = mapped.chaosAmt;
+        const float cFl = mapped.cFlutter;
+        const float cCh = mapped.cChorus;
 
         flNoise += 0.05f * (flRng.bipolar() - flNoise);
-        const float fFl = (6.0f + 8.0f * g) * (1.0f + 0.2f * std::clamp (flNoise * 4.0f, -1.0f, 1.0f));
+        const float fFl = mapped.fFlutter * (1.0f + 0.2f * std::clamp (flNoise * 4.0f, -1.0f, 1.0f));
 
         const float base = 0.007f + 0.008f * g; // seconds
         const float k2pi = kCentsPerLn * (float) kTwoPi;
@@ -392,6 +424,7 @@ private:
         // Pitch ratio of a moving read head is 1 - d(delay)/d(sample). Report it; do not feed it back into the delay.
         const float slope = dInc[0];
         tele.instantCents = slope < 0.99f ? kCentsPerLn * std::log1p (-slope) : 0.0f;
+        tele.cWow = cWow; tele.cFlutter = cFl; tele.cChorus = cCh; tele.fFlutter = mapped.fFlutter;
         first = false;
     }
 

@@ -48,7 +48,7 @@ jobs:
         run: |
           # One JUCE target at a time, two jobs. A full parallel build compiles JUCE twice
           # at once and the Linux runner is stopped mid-compile.
-          cmake --build build --config Release --parallel 2 --target orbit_render_test orbit_loudness_test orbit_bloom_ab orbit_bloom_zone_ab
+          cmake --build build --config Release --parallel 2 --target orbit_render_test orbit_loudness_test orbit_layout_test orbit_bloom_ab orbit_bloom_zone_ab
           cmake --build build --config Release --parallel 2 --target ORBIT_VST3
           cmake --build build --config Release --parallel 2 --target ORBIT_Standalone
 
